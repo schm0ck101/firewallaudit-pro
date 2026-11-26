@@ -91,6 +91,12 @@ class AddrSet:
             return True
         return bool(self.opaque & other.opaque) or _intersects(self.iv, other.iv) or bool(self.opaque or other.opaque)
 
+    def surely_intersects(self, other: "AddrSet") -> bool:
+        """Intersection CERTAINE (adresses connues seulement ; les objets opaques ne comptent pas)."""
+        if self.negate or other.negate:
+            return self.is_any or other.is_any
+        return _intersects(self.iv, other.iv)
+
     def contains_ip(self, ip: str) -> bool:
         try:
             n = int(ipaddress.IPv4Address(ip))

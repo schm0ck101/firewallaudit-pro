@@ -20,7 +20,7 @@ def any_any(c: Ctx):
     for r in c.active:
         if r.action != ALLOW or r.extra_conditions or not (r.src_set.is_any and r.dst_set.is_any and r.svc_set.is_any):
             continue
-        if c.is_windows or c.to_firewall(r):
+        if c.is_windows or c.to_firewall(r) or c.is_default(r):      # politiques par défaut : voir default_matrix
             continue
         sr, dr = c.roles(r.src_zones), c.roles(r.dst_zones)
         if WAN in sr or (ANY in sr and ANY in dr):
@@ -50,6 +50,10 @@ def egress_from_lan(c: Ctx):
         if (r.action != ALLOW or r.extra_conditions or r.src_set.is_any or not r.dst_set.is_any or not r.svc_set.is_any
                 or r.src_set.is_public() or c.to_firewall(r) or f"pol.egress.{r.id}" in {f.id for f in c.findings}):
             continue
+        if GUEST in c.roles(r.src_zones) or all(role == GUEST for _n, role, a in c.nets_by_role((GUEST, LAN, IOT))
+                                                if a.surely_intersects(r.src_set)) and c.nets_by_role((GUEST,)) and \
+                any(a.surely_intersects(r.src_set) for _n, _r, a in c.nets_by_role((GUEST,))):
+            continue                     # réseau invités : sortir librement sur Internet est son rôle
         if c.roles(r.dst_zones) & {WAN, ANY}:
             c.add(f"pol.egress.{r.id}", POL, MINOR, f"Sortie sans restriction depuis {r.src_set.describe(2)} : {r.label()}",
                   c.describe(r),
@@ -65,9 +69,9 @@ def inbound_sensitive(c: Ctx):
     if c.is_windows:
         return
     for r in c.active:
-        if r.action != ALLOW or not c.from_wan(r) or c.to_firewall(r):
+        if r.action != ALLOW or not c.from_wan(r) or c.to_firewall(r) or c.is_return(r):
             continue
-        hits = [(p, lab, sev) for p, (lab, sev) in SENSITIVE.items() if sev >= 3 and r.svc_set.has_port(p)]
+        hits =[(p, lab, sev) for p, (lab, sev) in SENSITIVE.items() if sev >= 3 and r.svc_set.has_port(p)]
         if not hits or r.svc_set.is_any and r.src_set.is_any and r.dst_set.is_any:
             continue
         open_src = r.src_set.is_any or r.src_set.size > 2**16
@@ -84,27 +88,53 @@ def inbound_sensitive(c: Ctx):
 
 @rule
 def segmentation(c: Ctx):
-    """Zones à risque (invités, objets connectés) autorisées vers le réseau interne."""
-    for r in c.active:
-        if r.action != ALLOW or c.is_windows:
+    """Réseaux à risque (invités, objets connectés, caméras) autorisés vers les réseaux internes. Le rôle se lit sur la
+    zone ET sur les réseaux réellement contenus dans les adresses source (UniFi : tous les VLAN de la zone « Internal »).
+    Un réseau n'est signalé que si aucune règle de blocage placée AVANT ne le protège déjà."""
+    if c.is_windows:
+        return
+    risky_nets = c.nets_by_role((GUEST, IOT))
+    lan_nets = c.nets_by_role((LAN, "mgmt", "dmz"))
+    seen = set()
+    for idx, r in enumerate(c.active):
+        if r.action != ALLOW or r.extra_conditions or c.is_return(r) or not r.svc_set.is_any:
             continue
         sr, dr = c.roles(r.src_zones), c.roles(r.dst_zones)
-        risky = sr & {GUEST, IOT}
-        if not risky or r.extra_conditions:
+        if not (dr & {LAN, ANY, "mgmt", "dmz", GUEST, IOT}) or (r.dst_set.is_public() and not r.dst_set.is_any and WAN in dr):
             continue
-        if (dr & {LAN, ANY, "mgmt", "dmz"}) and (r.dst_set.is_any or not r.dst_set.is_public()) and r.svc_set.is_any:
-            lab = "invités" if GUEST in risky else "objets connectés / caméras"
-            c.add(f"pol.seg.{r.id}", POL, MAJOR if r.src_set.is_any else MINOR,
-                  f"Réseau {lab} autorisé vers le réseau interne : {r.label()}", c.describe(r),
+        cand = []
+        if sr & {GUEST, IOT} and not risky_nets:
+            cand.append(("ce réseau", GUEST if GUEST in sr else IOT, r.src_set))
+        for name, role, net in risky_nets:
+            if r.src_set.surely_intersects(net) and (not r.src_zones or sr & {GUEST, IOT, LAN, ANY}):
+                cand.append((name, role, net))
+        for name, role, net in cand:
+            targets = [(n2, a2) for n2, _r2, a2 in lan_nets if r.dst_set.surely_intersects(a2) and not a2.covers(net) and n2 != name]
+            if not targets:
+                continue
+            earlier = c.active[:idx]
+            open_to = [n2 for n2, a2 in targets if not any(
+                d.action == "deny" and not d.extra_conditions and d.svc_set.is_any and d.src_set.covers(net) and d.dst_set.covers(a2)
+                and d.layer == r.layer for d in earlier)]
+            if not open_to or (name, r.id) in seen:
+                continue
+            seen.add((name, r.id))
+            lab = "invités" if role == GUEST else "objets connectés / caméras"
+            dflt = " (règle par défaut du pare-feu)" if c.is_default(r) else ""
+            c.add(f"pol.seg.{r.id}.{name}", POL, MAJOR, f"Réseau « {name} » ({lab}) autorisé vers {', '.join(open_to)}{dflt}",
+                  c.describe(r) + f". Aucune règle placée avant ne bloque « {name} » vers {', '.join(open_to)}.",
                   "Un appareil invité ou un objet connecté (rarement mis à jour) peut atteindre les postes et serveurs.",
-                  "N'autoriser vers l'interne que les flux indispensables (ex. une caméra vers l'enregistreur sur un port précis).")
+                  f"Ajouter, avant cette règle, un blocage de « {name} » vers {', '.join(open_to)} (puis n'autoriser que les "
+                  "flux indispensables, ex. une caméra vers l'enregistreur sur un port précis).")
 
 
 @rule
 def shadowed(c: Ctx):
     if c.is_windows:          # pare-feu Windows : le blocage l'emporte toujours, l'ordre des règles ne compte pas
         return
-    rules = [r for r in c.active]
+    # règles prédéfinies (politiques par défaut, portail invités dépendant de l'authentification) et règles de retour :
+    # leur ordre est imposé par le constructeur, les déclarer « masquées » n'aurait pas de sens
+    rules = [r for r in c.active if not c.is_default(r) and not c.is_return(r)]
     masked, redundant = [], []
     for j, b in enumerate(rules):
         for a in rules[:j]:
@@ -174,7 +204,8 @@ def unused_and_disabled(c: Ctx):
 def logging_and_profiles(c: Ctx):
     if c.is_windows:
         return
-    nolog = [r for r in c.active if r.action == ALLOW and c.from_wan(r) and r.log is False]
+    nolog = [r for r in c.active if r.action == ALLOW and c.from_wan(r) and r.log is False and not c.is_return(r)
+             and not c.is_default(r)]
     if nolog:
         c.add("pol.nolog", POL, MINOR, f"{len(nolog)} flux entrant(s) autorisé(s) sans journalisation",
               "", "En cas d'incident, impossible de savoir qui s'est connecté et quand.",

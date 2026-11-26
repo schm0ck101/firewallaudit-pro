@@ -96,7 +96,9 @@ def analyze(snapshot: dict, prev_snapshot: dict | None = None) -> Analysis:
     for f in findings:
         for prefix in ("pol.anyany.", "pol.egress.", "pol.wide.", "pol.inbound.", "pol.seg.", "pol.shadow."):
             if f.id.startswith(prefix):
-                by_rule.setdefault(f.id[len(prefix):], []).append([f.severity, f.title])
+                rest = f.id[len(prefix):]
+                rid = max((r.id for r in c.cfg.rules if rest == r.id or rest.startswith(r.id + ".")), key=len, default=rest)
+                by_rule.setdefault(rid, []).append([f.severity, f.title])
     for f in findings:
         if f.id == "pol.redundant":
             for ev in f.evidence:

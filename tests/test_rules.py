@@ -81,6 +81,29 @@ def test_sophos_stormshield_watchguard_unifi(tmp_path):
     assert [f for f in u.findings if f.id.startswith("expo.admin") and f.severity == MAJOR]
 
 
+def test_unifi_network11_real_structure():
+    """Structure relevée sur une vraie console (UniFi OS 6 / Network 11) : règles prédéfinies, retours, portail invités,
+    politiques par défaut des paires de zones, règles par client, redirection limitée par groupe d'adresses."""
+    import json
+
+    from fwaudit.fw import unifi
+    data = json.loads((CFG / "unifi_network11.json").read_text(encoding="utf-8"))
+    cfg = unifi.to_model(data)
+    raw = unifi.sanitize(data)
+    assert "SECRET" not in json.dumps(raw) and "zone_key" in json.dumps(raw) and "x_ssh_password_auth" in json.dumps(raw)
+    assert len({r.id for r in cfg.rules}) == len(cfg.rules)                       # identifiants uniques
+    dsm = next(n for n in cfg.nat if n.name.startswith("DSMS"))
+    assert dsm.src_restrict and "198.51.100.4" in dsm.src_restrict
+    a = analyze({"config": cfg.to_dict(), "meta": {"raw_api": raw}, "tests": {}})
+    assert not a.rule_errors
+    crit_or_major = [(f.id, f.title) for f in a.findings if f.severity >= MAJOR]
+    # seul vrai problème : le réseau Caméras n'est bloqué vers Bureau par aucune règle (IoT, lui, l'est)
+    assert len(crit_or_major) == 1 and "Caméras" in crit_or_major[0][1], crit_or_major
+    assert not [f for f in a.findings if f.id.startswith(("pol.shadow", "pol.redundant", "pol.anyany", "pol.wide"))]
+    assert not [f for f in a.findings if "Return" in f.title or "Guest" in f.title or "10.30.40" in f.title]
+    assert sev(a, "expo.nat") != CRIT and sev(a, "sys.unifi.ssh") is None
+
+
 def test_clean_fortigate_has_no_major():
     txt = '''#config-version=FGT40F-7.4.5-FW-build2702:opmode=0:vdom=0
 config system global

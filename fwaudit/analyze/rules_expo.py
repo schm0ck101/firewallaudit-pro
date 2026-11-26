@@ -121,7 +121,7 @@ def admin_from_wan(c: Ctx):
                 lab, sev = ADMIN_LABELS.get(a, (a, MINOR))
                 hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »"))
         for r in c.active:
-            if r.action == ALLOW and c.to_firewall(r) and c.from_wan(r) and not r.extra_conditions:
+            if r.action == ALLOW and c.to_firewall(r) and c.from_wan(r) and not r.extra_conditions and not c.is_default(r):
                 for p in (443, 80, 22, 23, 8443, 4444, 10443, 8291, 1300, 4433, 8080):
                     if r.svc_set.has_port(p):
                         sev = MAJOR if r.src_set.is_any else MINOR

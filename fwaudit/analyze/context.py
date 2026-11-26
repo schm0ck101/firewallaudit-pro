@@ -26,6 +26,15 @@ class Ctx:
         self.snap = snap
         self.prev = prev
         self.cfg: FwConfig = FwConfig.from_dict(snap.get("config") or {"vendor": "?"})
+        raw = (snap.get("meta") or {}).get("raw_api")
+        if raw and self.cfg.vendor.startswith("UniFi"):
+            # données brutes conservées : la ré-analyse profite des corrections du lecteur
+            from ..fw import unifi
+            try:
+                src = self.cfg.source
+                self.cfg = unifi.to_model(raw, src)
+            except Exception:
+                pass
         self.meta: dict = snap.get("meta") or {}
         self.tests: dict = snap.get("tests") or {}
         self.findings: list[Finding] = []
@@ -56,6 +65,27 @@ class Ctx:
 
     def to_firewall(self, r: Rule) -> bool:
         return r.layer in ("input", "local-in") or LOCAL in self.roles(r.dst_zones)
+
+    @staticmethod
+    def is_return(r: Rule) -> bool:
+        """Règle qui ne laisse passer que le RETOUR de connexions déjà établies (pas une ouverture)."""
+        return any(a.startswith("état retour") or (a.startswith("état ") and "new" not in a and
+                                                  ("established" in a or "related" in a)) for a in r.apps)
+
+    @staticmethod
+    def is_default(r: Rule) -> bool:
+        """Règle prédéfinie par le constructeur (politique par défaut d'une paire de zones, portail invités…)."""
+        return r.comment == "prédéfinie"
+
+    def nets_by_role(self, roles: tuple) -> list[tuple[str, str, "AddrSet"]]:
+        from ..fw.sets import AddrSet
+        out = []
+        for i in self.cfg.interfaces:
+            if i.role in roles and i.ips:
+                a = AddrSet.parse(i.ips)
+                if a.iv:
+                    out.append((i.name, i.role, a))
+        return out
 
     def is_final_drop(self, r: Rule) -> bool:
         """Blocage de tout ce qui vient du WAN (ou de tout ce qui n'est pas interne : « !LAN »), les seules

@@ -151,7 +151,8 @@ def mikrotik_ssh(host: str, user: str, password: str = "", key_file: str = "", p
 def unifi_api(host: str, user: str, password: str, site: str = "default") -> tuple[FwConfig, dict]:
     data = unifi.fetch(host, user, password, site)
     cfg = unifi.to_model(data)
-    return cfg, {"vendor": "unifi", "source": "api", "host": host, "errors": data.get("_errors", [])}
+    return cfg, {"vendor": "unifi", "source": "api", "host": host, "errors": data.get("_errors", []),
+                 "raw_api": unifi.sanitize(data)}
 
 
 def windows_local() -> tuple[FwConfig, dict]:

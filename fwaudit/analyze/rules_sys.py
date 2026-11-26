@@ -105,7 +105,7 @@ def admins(c: Ctx):
 def clear_admin(c: Ctx):
     """Administration en HTTP / Telnet (interfaces ou règles vers le pare-feu), même sans liste d'administrateurs."""
     clear = [i.name for i in c.cfg.interfaces if any(a in ("http", "telnet", "www") for a in i.admin) and i.role != "wan"]
-    clear += [f"règle {r.label()}" for r in c.active if r.action == ALLOW and c.to_firewall(r) and not r.svc_set.is_any
+    clear += [f"règle {r.label()}" for r in c.active if r.action == ALLOW and c.to_firewall(r) and not r.svc_set.is_any and not c.is_default(r)
               and (r.svc_set.has_port(23) or r.svc_set.has_port(80)) and not c.is_windows]
     if clear and "MikroTik" not in c.cfg.vendor:
         c.add("sys.admin.clear", SYS, MINOR, f"Administration non chiffrée (HTTP / Telnet) sur : {', '.join(clear)}", "",

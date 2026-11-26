@@ -90,6 +90,27 @@ def fetch(host: str, user: str, password: str, site: str = "default") -> dict:
     return out
 
 
+SECRET_KEYS = ("passphrase", "password", "secret", "psk", "private_key", "privatekey", "token", "preshared", "pre_shared",
+               "wpa_key", "auth_key", "api_key")
+
+
+def sanitize(obj):
+    """Copie des données de l'API sans aucun secret (phrases Wi-Fi, clés VPN, mots de passe, champs x_…) :
+    conservée dans l'audit pour pouvoir RÉ-ANALYSER avec une version plus récente du lecteur."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            kl = str(k).lower()
+            keep = kl in ("x_ssh_enabled", "x_ssh_password_auth")          # réglages, pas des secrets
+            if not keep and (kl.startswith("x_") or any(s in kl for s in SECRET_KEYS)):
+                continue
+            out[k] = sanitize(v)
+        return out
+    if isinstance(obj, list):
+        return [sanitize(x) for x in obj]
+    return obj
+
+
 def _net_by_id(data: dict) -> dict:
     return {n.get("_id"): n for n in (data.get("networks") or [])}
 
@@ -110,7 +131,8 @@ def to_model(data: dict, source: str = "") -> FwConfig:
             VPN if "vpn" in purpose else LAN
         name = n.get("name", "")
         low = name.lower()
-        if role == LAN and any(k in low for k in ("iot", "camera", "caméra", "domot", "objet", "cctv")):
+        if role == LAN and any(k in low for k in ("iot", "internet of things", "camera", "caméra", "domot", "objet", "cctv",
+                                                  "video", "vidéo", "surveillance")):
             role = "iot"
         cfg.interfaces.append(Interface(name=name, role=role, ips=[n["ip_subnet"]] if n.get("ip_subnet") else [],
                                         vlan=n.get("vlan") if n.get("vlan_enabled") else None, enabled=n.get("enabled", True),
@@ -152,8 +174,12 @@ def to_model(data: dict, source: str = "") -> FwConfig:
                 names = names + [f"groupe {g.get('name')}"]
         elif mt == "REGION":
             a, names = AddrSet(opaque=frozenset(["pays : " + ",".join(e.get("regions") or [])])), ["pays " + ",".join(e.get("regions") or [])]
-        else:                                             # CLIENT, MAC, DEVICE, APP, WEB…
-            a, names = AddrSet(opaque=frozenset([mt.lower()])), [mt.lower()]
+        else:                                             # CLIENT, MAC, DEVICE, APP, WEB… : identifiants précis (deux
+            ids = []                                      # règles « client » ne se couvrent que pour les MÊMES clients)
+            for k in ("client_macs", "mac_addresses", "device_ids", "app_ids", "app_category_ids", "web_domains", "macs"):
+                ids += [str(x) for x in (e.get(k) or [])]
+            lab = f"{mt.lower()} {', '.join(sorted(ids))}".strip() if ids else f"{mt.lower()} (non détaillé)"
+            a, names = AddrSet(opaque=frozenset([lab])), [lab]
         if e.get("match_opposite_ips") or e.get("match_opposite_networks"):
             a = AddrSet(a.iv, a.opaque, True)
         svc = None
@@ -205,16 +231,36 @@ def to_model(data: dict, source: str = "") -> FwConfig:
         r.set_svc(sv)
         r.svc_names = [f"{proto} {(p.get('destination') or {}).get('port') or ''}".strip()]
         cst = (p.get("connection_state_type") or "ALL").upper()
-        if cst not in ("ALL", ""):
-            r.apps = [f"état {','.join(p.get('connection_states') or [cst.lower()])}"]
+        states = [str(s).lower() for s in (p.get("connection_states") or [])]
+        nm = (p.get("name") or "").lower()
+        # règles de RETOUR (trafic d'une connexion déjà établie) : prédéfinies « Allow Return Traffic » et règles
+        # « … (Return) » créées automatiquement pour chaque autorisation : ce ne sont pas des ouvertures
+        if cst in ("RESPOND_ONLY", "RETURN") or nm.endswith("(return)") or "return traffic" in nm or \
+                (states and "new" not in states and set(states) <= {"established", "related"}):
+            r.apps = ["état retour (connexions établies)"]
+        elif cst not in ("ALL", ""):
+            r.apps = [f"état {','.join(states or [cst.lower()])}"]
         sch = (p.get("schedule") or {}).get("mode", "ALWAYS")
         r.schedule = "" if sch in ("ALWAYS", None) else sch.lower()
         r.log = bool(p.get("logging"))
         r.layer = "input" if ZONE_ROLE.get((zones.get((p.get("destination") or {}).get("zone_id")) or {}).get("zone_key")) == LOCAL else "filter"
         r.comment = "prédéfinie" if p.get("predefined") else ""
-        r.raw = json.dumps({k: p.get(k) for k in ("name", "action", "index", "protocol", "source", "destination", "enabled")},
-                           ensure_ascii=False)[:900]
+        r.raw = json.dumps({k: p.get(k) for k in ("name", "action", "index", "protocol", "predefined", "connection_state_type",
+                                                  "connection_states", "source", "destination", "enabled")},
+                           ensure_ascii=False)[:1400]
         cfg.rules.append(r)
+
+    # UniFi réutilise le même numéro (index) dans chaque paire de zones : identifiant rendu unique
+    from collections import Counter
+    dup = Counter(r.id for r in cfg.rules)
+    for r in cfg.rules:
+        if dup[r.id] > 1:
+            r.id = f"{r.id} {'/'.join(r.src_zones) or '*'}→{'/'.join(r.dst_zones) or '*'}"
+    seen_ids: Counter = Counter()
+    for r in cfg.rules:                      # même numéro ET même paire de zones (règle et son « Return »)
+        seen_ids[r.id] += 1
+        if seen_ids[r.id] > 1:
+            r.id = f"{r.id} ({seen_ids[r.id]})"
 
     # anciennes règles (avant le pare-feu par zones)
     if not pols:
@@ -254,8 +300,14 @@ def to_model(data: dict, source: str = "") -> FwConfig:
     for f in data.get("portforward") or []:
         src = f.get("src") or "any"
         restrict = [] if src in ("any", "") else [src]
-        if f.get("src_firewallgroup_id") and f["src_firewallgroup_id"] in groups:
-            restrict = groups[f["src_firewallgroup_id"]].get("group_members") or ["groupe"]
+        gid = f.get("src_firewall_group_id") or f.get("src_firewallgroup_id")     # nom selon la version de Network
+        if gid:
+            restrict = (groups.get(gid) or {}).get("group_members") or [f"groupe d'adresses {(groups.get(gid) or {}).get('name') or gid}"]
+        # Network 9+ : la redirection crée une politique « Allow Port Forward <nom> » qui porte la restriction de source
+        if not restrict:
+            pol = next((r for r in cfg.rules if r.name.lower() == f"allow port forward {f.get('name', '')}".lower()), None)
+            if pol and not pol.src_set.is_any:
+                restrict = [pol.src_set.describe(6)]
         cfg.nat.append(Nat(id=f.get("_id", ""), name=f.get("name", ""), enabled=f.get("enabled", True),
                            ext_ip=f.get("destination_ip") if f.get("destination_ip") not in (None, "any") else "",
                            ext_ports=str(f.get("dst_port", "")), proto=f.get("proto", "tcp_udp"), int_ip=f.get("fwd", ""),
@@ -273,7 +325,7 @@ def to_model(data: dict, source: str = "") -> FwConfig:
         "snmp_v3": bool(snmp.get("enabledV3")), "ntp": True, "log_remote": bool(rsys.get("enabled") or rsys.get("ip")),
         "dpi": bool(st.get("dpi", {}).get("enabled")), "geo_block": bool(st.get("country", {}).get("enabled")),
         "teleport": bool(st.get("teleport", {}).get("enabled")),
-        "auto_upgrade": bool(mgmt.get("auto_upgrade")),
+        "auto_upgrade": mgmt.get("auto_upgrade") if "auto_upgrade" in mgmt else None,
     }
     # Wi-Fi
     wl = []
