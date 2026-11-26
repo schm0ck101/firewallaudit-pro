@@ -115,6 +115,13 @@ class AddrSet:
         more = len(self.iv) + len(self.opaque) - len(parts)
         return ("tout sauf " if self.negate else "") + ", ".join(parts) + (f" (+{more})" if more > 0 else "")
 
+    def public_part(self) -> "AddrSet":
+        """Seulement les plages publiques (et objets opaques) : pour afficher « depuis Internet : … »."""
+        if self.is_any or self.negate:
+            return self
+        keep = [(lo, hi) for lo, hi in self.iv if AddrSet([(lo, hi)]).is_public()]
+        return AddrSet(keep, self.opaque)
+
     def is_public(self) -> bool:
         """Contient des adresses publiques (Internet) ?"""
         if self.is_any or self.negate:

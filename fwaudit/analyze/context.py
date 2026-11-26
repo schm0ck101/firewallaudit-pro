@@ -13,7 +13,7 @@ SENSITIVE = {
     27017: ("MongoDB", 4), 6379: ("Redis", 4), 9200: ("Elasticsearch", 4), 11211: ("Memcached", 4),
     5985: ("WinRM", 4), 5986: ("WinRM (HTTPS)", 3), 2375: ("API Docker", 4), 161: ("SNMP", 3), 623: ("IPMI", 4),
     389: ("LDAP", 4), 636: ("LDAPS", 3), 88: ("Kerberos", 4), 53: ("DNS", 2), 8291: ("Winbox MikroTik", 4),
-    8728: ("API MikroTik", 4), 10000: ("Webmin", 3), 5000: ("Interface NAS (HTTP)", 3), 5001: ("Interface NAS", 3),
+    8728: ("API MikroTik", 4), 10000: ("Webmin", 3), 5000: ("port 5000 (interface NAS ou web)", 3), 5001: ("port 5001 (interface NAS ou web)", 3),
     8006: ("Proxmox", 3), 9100: ("Impression RAW", 3), 502: ("Modbus", 4), 47808: ("BACnet", 4), 1883: ("MQTT", 3),
     25: ("SMTP", 2), 110: ("POP3", 2), 143: ("IMAP", 2), 80: ("HTTP", 1), 8080: ("HTTP", 1), 8443: ("HTTPS (admin ?)", 1),
 }

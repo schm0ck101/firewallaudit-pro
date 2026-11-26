@@ -126,7 +126,7 @@ def admin_from_wan(c: Ctx):
                 for p in (443, 80, 22, 23, 8443, 4444, 10443, 8291, 1300, 4433, 8080, 4117, 4105, 4118):
                     if r.svc_set.has_port(p):
                         sev = MAJOR if r.src_set.is_any else MINOR
-                        hits.append((sev, f"règle {r.label()} : accès au pare-feu (port {p}) depuis {r.src_set.describe(2)}"))
+                        hits.append((sev, f"règle {r.label()} : accès au pare-feu (port {p}) depuis {r.src_set.public_part().describe(3)}"))
                         break
     admins_trusted = all(a.trusted for a in cfg.admins if a.enabled and a.name != "(comptes Windows)") and cfg.admins
     for sev, line in sorted(set(hits), key=lambda x: -x[0]):
@@ -179,10 +179,22 @@ def exposure_summary(c: Ctx):
     exp = expected_exposure(c)
     c.snap["_expected_exposure"] = exp
     if exp:
-        c.add("expo.expected", EXPO, INFO, f"{len(exp)} port(s) attendu(s) ouvert(s) vus d'Internet (d'après la configuration)",
-              "Liste comparée au scan externe s'il a été réalisé.", "", "",
-              [f"{e['proto']}/{e['port'] or 'tous'} : {e['why']}" + (" (sources restreintes)" if e["restricted"] else "") for e in exp[:40]])
+        groups: dict[tuple, list[int]] = {}
+        for e in exp:
+            groups.setdefault((e["why"].split(" → ")[0], e["proto"], e["restricted"]), []).append(e["port"])
 
+        def ranges(ps):
+            ps, out = sorted(set(ps)), []
+            for x in ps:
+                if out and x == out[-1][1] + 1:
+                    out[-1][1] = x
+                else:
+                    out.append([x, x])
+            return ",".join("tous" if a == 0 else str(a) if a == b else f"{a}-{b}" for a, b in out)
+        c.add("expo.expected", EXPO, INFO, f"{len(groups)} accès attendu(s) depuis Internet d'après la configuration",
+              "Liste comparée au scan externe s'il a été réalisé.", "", "",
+              [f"{proto}/{ranges(ps)} : {why}" + (" (sources restreintes)" if rst else "")
+               for (why, proto, rst), ps in list(groups.items())[:40]])
 
 RULES = R
 

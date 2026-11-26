@@ -238,3 +238,9 @@ def test_watchguard_real_structure():
     assert not [i for i in got if i.endswith(".2") or i.startswith("pol.redundant")], got
     assert [f for f in a.findings if f.id.startswith("expo.admin.") and "#7" in f.title and f.severity == MINOR]
     assert got.get("sys.vpn.SITE-SECOND") == 0 and got.get("sys.log") == MINOR
+    # IP publique vue depuis le réseau d'audit hors des interfaces Internet du pare-feu : autre chemin de sortie
+    a2 = run(cfg, {"egress": {"tcp": {"25": {"open": True}}}, "public_measured": "198.51.100.225"})
+    assert {f.id: f.severity for f in a2.findings}.get("test.path") == MAJOR
+    assert "test.path" not in got
+    adm = next(f for f in a.findings if f.id.startswith("expo.admin.") and "#7" in f.title)
+    assert "192.168." not in adm.title                                                # seules les sources publiques sont citées

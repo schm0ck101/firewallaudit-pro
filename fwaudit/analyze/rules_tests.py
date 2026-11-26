@@ -21,6 +21,35 @@ def _config_blocks_out(c: Ctx, port: int) -> list:
             and (WAN in c.roles(r.dst_zones) or not r.dst_zones)]
 
 
+def _path_mismatch(c: Ctx) -> str:
+    """L'IP publique vue depuis le réseau d'audit appartient-elle à une interface Internet du pare-feu ?
+    Seulement si le pare-feu porte lui-même des IP publiques (sinon NAT en amont, rien à conclure)."""
+    import ipaddress
+
+    from ..fw.sets import AddrSet
+    seen = c.tests.get("public_measured")
+    if not seen:
+        return ""
+    nets = []
+    for i in c.cfg.interfaces:
+        if i.role != WAN:
+            continue
+        for cidr in i.ips:
+            try:
+                itf = ipaddress.IPv4Interface(cidr)
+            except ValueError:
+                continue
+            if AddrSet([(int(itf.ip), int(itf.ip))]).is_public():
+                nets.append(itf.network)
+    try:
+        ip = ipaddress.IPv4Address(seen)
+    except ValueError:
+        return ""
+    if not nets or any(ip in n for n in nets):
+        return ""
+    return f"{seen} (interfaces Internet du pare-feu : {', '.join(str(n) for n in nets[:3])})"
+
+
 @rule
 def egress(c: Ctx):
     e = c.tests.get("egress")
@@ -30,6 +59,14 @@ def egress(c: Ctx):
     if e.get("error"):
         c.nc("test.egress", TEST, "Filtrage sortant réel", e["error"])
         return
+    other_path = _path_mismatch(c)
+    if other_path:
+        c.add("test.path", TEST, MAJOR, "Le trafic du réseau d'audit ne sort pas par ce pare-feu",
+              f"IP publique vue depuis le réseau d'audit : {other_path}.",
+              "Une autre sortie Internet (box, routeur, 4G, accès opérateur) contourne le pare-feu, ou le poste d'audit "
+              "n'était pas derrière lui : les règles auditées ne protègent pas ce trafic.",
+              "Vérifier la passerelle du réseau d'audit et les autres accès Internet du site ; si le chemin est voulu "
+              "(NAT opérateur en amont), relancer les tests depuis un réseau situé derrière le pare-feu.")
     tcp = e.get("tcp") or {}
     is_open = {int(p): (v.get("open") if isinstance(v, dict) else bool(v)) for p, v in tcp.items()}
     opened = [p for p, o in is_open.items() if o]
@@ -51,7 +88,7 @@ def egress(c: Ctx):
                            (3389, MINOR, "Bureau à distance vers l'extérieur : prise de main sortante non contrôlée."),
                            (1723, INFO, "PPTP sortant possible.")):
         if is_open.get(port):
-            blk = _config_blocks_out(c, port)
+            blk = [] if other_path else _config_blocks_out(c, port)
             if blk:
                 c.add(f"test.egress.mismatch.{port}", TEST, MAJOR,
                       f"Le port {port} ({EGRESS_PORTS[port]}) sort malgré la règle {blk[0].label()} censée le bloquer",
