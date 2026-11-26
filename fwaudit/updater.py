@@ -140,14 +140,25 @@ def portable_target_dir() -> Path:
         return Path(tempfile.gettempdir()) / "FirewallAuditPro-update"
 
 
+def clean_env() -> dict:
+    """Environnement pour lancer une AUTRE instance de l'application (ou l'installateur qui la relance) : sans les
+    variables du chargeur PyInstaller de l'instance actuelle. Sinon le nouvel exécutable « un seul fichier » se croit
+    déjà décompressé et cherche python313.dll dans le dossier temporaire de l'ancien, supprimé à sa fermeture
+    (« Failed to load Python DLL … _MEIxxxx\\python313.dll »)."""
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("_PYI_", "_MEIPASS"))}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def apply(path: Path) -> str:
     """Lance l'application de la mise à jour ; l'appelant doit ensuite FERMER l'application.
     Renvoie un message pour l'utilisateur."""
     mode = installed_mode()
+    env = clean_env()
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     if mode == "installed":
         subprocess.Popen([str(path), "/SILENT", "/SP-", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
-                         close_fds=True, creationflags=flags)
+                         close_fds=True, creationflags=flags, env=env)
         return "L'installateur va mettre à jour l'application puis la relancer."
     if mode == "portable":
         exe = Path(sys.executable).resolve()
@@ -175,7 +186,7 @@ def apply(path: Path) -> str:
         if si is not None:
             si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             si.wShowWindow = 0
-        subprocess.Popen(["cmd.exe", "/d", "/c", str(script)], close_fds=True, startupinfo=si,
+        subprocess.Popen(["cmd.exe", "/d", "/c", str(script)], close_fds=True, startupinfo=si, env=env,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
                          | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
         return "La nouvelle version remplacera l'actuelle dès la fermeture, puis se relancera."

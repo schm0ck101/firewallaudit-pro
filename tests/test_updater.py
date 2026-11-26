@@ -83,3 +83,13 @@ def test_download_never_overwrites_running_exe(monkeypatch, tmp_path):
     p = updater.download(u, tmp_path)
     assert p.name == "FirewallAuditPro-Portable-9.9.9.exe" and running.read_bytes() == b"ancien"
     assert not list(tmp_path.glob("*.part"))
+
+
+def test_clean_env_for_new_instance(monkeypatch):
+    """Variables du chargeur PyInstaller retirées : sinon le nouvel exe cherche python313.dll dans l'ancien _MEI."""
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", r"C:\Temp\_MEI123")
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("_MEIPASS2", r"C:\Temp\_MEI123")
+    env = updater.clean_env()
+    assert not [k for k in env if k.upper().startswith(("_PYI_", "_MEIPASS"))]
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1" and "PATH" in {k.upper() for k in env}
