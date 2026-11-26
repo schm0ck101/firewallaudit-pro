@@ -3,7 +3,7 @@ réellement passer (sortie, cloisonnement, exposition vue d'Internet), et les
 écarts avec ce que dit la configuration."""
 from __future__ import annotations
 
-from ..fw.model import DENY, GUEST, IOT, WAN
+from ..fw.model import ALLOW, DENY, GUEST, IOT, WAN
 from .context import SENSITIVE, Ctx
 from .model import CRIT, INFO, MAJOR, MINOR, TEST
 
@@ -19,6 +19,28 @@ def _config_blocks_out(c: Ctx, port: int) -> list:
     """Règles de la configuration censées bloquer ce port vers Internet."""
     return [r for r in c.active if r.action == DENY and r.svc_set.has_port(port) and not r.svc_set.is_any
             and (WAN in c.roles(r.dst_zones) or not r.dst_zones)]
+
+
+def _config_allows_out(c: Ctx, port: int):
+    """Première règle active qui autorise ce port vers Internet depuis le réseau d'audit (si connu)."""
+    from ..fw.sets import AddrSet, parse_addr
+    net = (c.tests.get("audit_network") or {}).get("network")
+    here = AddrSet([parse_addr(net)]) if net and parse_addr(net) else None
+    for r in c.active:
+        if not r.svc_set.has_port(port) or not (c.roles(r.dst_zones) & {WAN, "any"}) or c.to_firewall(r):
+            continue
+        if "local" in c.roles(r.src_zones):    # trafic émis par le pare-feu lui-même
+            continue
+        if here is not None and not r.src_set.surely_intersects(here) and not r.src_set.is_any:
+            continue
+        return r if r.action == ALLOW else None
+    return None
+
+
+def _catch_all_deny(c: Ctx) -> bool:
+    """La configuration se termine-t-elle par un refus de tout vers Internet / partout (règle explicite) ?"""
+    return any(r.action == DENY and r.svc_set.is_any and r.dst_set.is_any and r.src_set.is_any and not r.extra_conditions
+               and (c.roles(r.dst_zones) & {WAN, "any"}) for r in c.active)
 
 
 def _path_mismatch(c: Ctx) -> str:
@@ -97,9 +119,19 @@ def egress(c: Ctx):
                       "Vérifier l'ordre des règles, les interfaces / zones de la règle, et les autres sorties (box, 4G de secours).",
                       [c.describe(b) for b in blk[:3]])
             else:
+                allow = None if other_path else _config_allows_out(c, port)
+                detail = "Connexion de test vers un serveur public réussie depuis ce réseau."
+                if allow is not None:
+                    inspected = [x for x in allow.profiles if x]
+                    detail += f" Flux prévu par la règle {allow.label()}" + (
+                        f", analysé ({', '.join(inspected[:3])})." if inspected else ", sans analyse de sécurité.")
+                    if inspected and sev > MINOR:
+                        sev = MINOR            # voulu et inspecté : reste à restreindre aux serveurs qui en ont besoin
                 c.add(f"test.egress.{port}", TEST, sev, f"Sortie autorisée vers Internet sur le port {port} ({EGRESS_PORTS[port]})",
-                      "Connexion de test vers un serveur public réussie depuis ce réseau.", why,
-                      "Bloquer ce port en sortie (sauf depuis les serveurs qui en ont besoin, ex. le serveur de messagerie pour le 25).")
+                      detail, why,
+                      "Bloquer ce port en sortie (sauf depuis les serveurs qui en ont besoin, ex. le serveur de messagerie pour le 25)."
+                      + (f" Restreindre la source de la règle {allow.label()}." if allow is not None else ""),
+                      [c.describe(allow)] if allow is not None else None)
     dd = e.get("dns_direct") or {}
     direct = [f"{v.get('provider')} ({k})" for k, v in dd.items() if v.get("ok")]
     if direct:
@@ -114,6 +146,19 @@ def egress(c: Ctx):
               "Si un filtrage DNS est en place : bloquer le port 853 et les catégories / domaines DoH connus (option des pare-feu UTM).")
     if not opened:
         c.ok("test.egress", TEST, "Filtrage sortant efficace sur tous les ports testés")
+    elif not other_path and not c.is_windows and _catch_all_deny(c) and (c.tests.get("audit_network") or {}).get("interface"):
+        # comparaison mesure / configuration : un port qui sort sans aucune règle qui l'autorise = autre chemin ou règle cachée
+        unexplained = [p for p in opened if _config_allows_out(c, p) is None and not _config_blocks_out(c, p)]
+        if unexplained:
+            c.add("test.egress.unexpected", TEST, MAJOR,
+                  f"{len(unexplained)} port(s) sortent alors qu'aucune règle ne les autorise",
+                  "Ports joignables sur Internet depuis le réseau d'audit : " + ", ".join(map(str, sorted(unexplained)[:15])) + ".",
+                  "Le trafic emprunte un chemin ou une règle que la configuration analysée ne montre pas "
+                  "(autre passerelle, règle ajoutée depuis, configuration fournie incomplète).",
+                  "Comparer avec la configuration en production et vérifier la passerelle des postes.")
+        elif len(opened) < len(is_open):
+            c.ok("test.egress.match", TEST, f"Filtrage sortant mesuré conforme à la configuration ({len(opened)} port(s) "
+                 f"ouverts sur {len(is_open)}, tous prévus par une règle)")
 
 
 @rule

@@ -242,5 +242,13 @@ def test_watchguard_real_structure():
     a2 = run(cfg, {"egress": {"tcp": {"25": {"open": True}}}, "public_measured": "198.51.100.225"})
     assert {f.id: f.severity for f in a2.findings}.get("test.path") == MAJOR
     assert "test.path" not in got
+    a3 = run(cfg, {"egress": {"tcp": {"25": {"open": True}, "4444": {"open": True}, "22": {"open": False}}},
+                   "audit_network": {"network": "192.168.1.0/24", "interface": "LAN", "role": "lan"}})
+    assert {f.id: f.severity for f in a3.findings}.get("test.egress.unexpected") == MAJOR   # 4444 sort sans règle
+    a4 = run(cfg, {"egress": {"tcp": {"25": {"open": True}, "22": {"open": False}}},
+                   "audit_network": {"network": "192.168.1.0/24", "interface": "LAN", "role": "lan"}})
+    assert [f for f in a4.findings if f.id == "test.egress.match"]
+    eg = next(f for f in a.findings if f.id == "test.egress.25")
+    assert eg.severity == MINOR and "#4" in eg.detail                                  # prévu par le proxy SMTP, inspecté
     adm = next(f for f in a.findings if f.id.startswith("expo.admin.") and "#7" in f.title)
     assert "192.168." not in adm.title                                                # seules les sources publiques sont citées
