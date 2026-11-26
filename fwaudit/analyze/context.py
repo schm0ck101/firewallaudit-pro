@@ -77,6 +77,16 @@ class Ctx:
         """Règle prédéfinie par le constructeur (politique par défaut d'une paire de zones, portail invités…)."""
         return r.comment == "prédéfinie"
 
+    def itf_in_zones(self, name: str, zones: list[str]) -> bool:
+        """Interface « name » concernée par une règle limitée aux zones « zones » (vide = toutes)."""
+        if not zones or "any" in [z.lower() for z in zones]:
+            return True
+        itf = next((i for i in self.cfg.interfaces if i.name == name), None)
+        if name in zones or bool(itf and itf.zone and itf.zone in zones):
+            return True
+        known = {i.name for i in self.cfg.interfaces} | {i.zone for i in self.cfg.interfaces if i.zone}
+        return any(z not in known for z in zones)    # zone qui ne correspond à aucune interface connue (UniFi…) : possible
+
     def nets_by_role(self, roles: tuple) -> list[tuple[str, str, "AddrSet"]]:
         from ..fw.sets import AddrSet
         out = []

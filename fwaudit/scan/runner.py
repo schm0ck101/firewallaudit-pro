@@ -173,7 +173,7 @@ def run(opts: Options, progress=None, cancel: threading.Event | None = None) -> 
                     itf = ipaddress.IPv4Interface(cidr)
                 except ValueError:
                     continue
-                if itf.network.is_global or str(itf.network) in seen or itf.network.prefixlen >= 31:
+                if itf.network.is_global or itf.network.is_link_local or str(itf.network) in seen or itf.network.prefixlen >= 31:
                     continue
                 seen.add(str(itf.network))
                 targets.append({"name": i.name, "network": str(itf.network), "role": i.role, "gateway": str(itf.ip)})

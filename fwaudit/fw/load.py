@@ -22,7 +22,7 @@ VENDORS = {
     "mikrotik": ("MikroTik RouterOS", "Fichier /export (.rsc) ou SSH en lecture", True),
     "windows": ("Pare-feu Windows", "Ce poste, ou fichier .json produit par --windows-export sur un serveur", True),
 }
-VALIDATED = {"forti": False, "stormshield": True, "sophos": False, "watchguard": True, "unifi": True, "mikrotik": False,
+VALIDATED = {"forti": True, "stormshield": True, "sophos": False, "watchguard": True, "unifi": True, "mikrotik": False,
              "windows": True}      # lecteurs validés sur des données réelles (mis à jour au fil des retours terrain)
 
 

@@ -121,10 +121,12 @@ def segmentation(c: Ctx):
         if sr & {GUEST, IOT} and not risky_nets:
             cand.append(("ce réseau", GUEST if GUEST in sr else IOT, r.src_set))
         for name, role, net in risky_nets:
-            if r.src_set.surely_intersects(net) and (not r.src_zones or sr & {GUEST, IOT, LAN, ANY}):
+            if r.src_set.surely_intersects(net) and (not r.src_zones or sr & {GUEST, IOT, LAN, ANY}) \
+                    and c.itf_in_zones(name, r.src_zones):
                 cand.append((name, role, net))
         for name, role, net in cand:
-            targets = [(n2, a2) for n2, _r2, a2 in lan_nets if r.dst_set.surely_intersects(a2) and not a2.covers(net) and n2 != name]
+            targets = [(n2, a2) for n2, _r2, a2 in lan_nets if r.dst_set.surely_intersects(a2) and not a2.covers(net) and n2 != name
+                       and c.itf_in_zones(n2, r.dst_zones)]
             if not targets:
                 continue
             earlier = c.active[:idx]

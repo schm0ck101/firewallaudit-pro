@@ -192,6 +192,10 @@ def to_model(text: str, source: str = "") -> FwConfig:
         for zname, z in (vt.get("config system zone") or {}).items():
             for m in _l(z, "interface"):
                 zone_of[m] = zname
+        sdw = vt.get("config system sdwan") or glob.get("config system sdwan") or {}
+        for _mid, m in ((sdw.get("config members") if isinstance(sdw, dict) else None) or {}).items():
+            if isinstance(m, dict) and _v(m, "interface") and _v(m, "zone"):
+                zone_of[_v(m, "interface")] = _v(m, "zone")
     for name, d in ifaces.items():
         role = _v(d, "role") or ""
         role = {"wan": WAN, "lan": LAN, "dmz": "dmz", "undefined": ""}.get(role, "") or guess_role(name + " " + _v(d, "alias"))
@@ -309,7 +313,7 @@ def to_model(text: str, source: str = "") -> FwConfig:
             r.set_svc(sv)
             r.enabled = _v(p, "status", "enable") != "disable"
             cfg.rules.append(r)
-        # ------------------------------------------------------------ VIP
+        # ------------------------------------------------------------ VIP (interfaces inutilisées retirées plus bas)
         for vid, v in V.sec("config firewall vip").items():
             ext = _v(v, "extip")
             mapped = _l(v, "mappedip")
@@ -379,6 +383,11 @@ def to_model(text: str, source: str = "") -> FwConfig:
         "admin_maintainer": _v(g, "admin-maintainer", "enable") == "enable",
         "admin_lockout_duration": _v(g, "admin-lockout-duration", "60"),
     }
+    # interfaces sans adresse ni usage (ports physiques d'un switch, naf.root, l2t.root…) : retirées de la fiche
+    used_itf = {z for r in cfg.rules for z in r.src_zones + r.dst_zones}
+    used_itf |= {_v(d, "interface") for d in ifaces.values() if isinstance(d, dict)}
+    cfg.interfaces = [i for i in cfg.interfaces if i.ips or i.role in (WAN, "vpn") or i.name in used_itf
+                      or (i.zone and i.zone in used_itf)]
     return cfg
 
 

@@ -295,6 +295,7 @@ def test_probes_proxy_and_interception(monkeypatch):
 FORTI_REAL = """#config-version=FGT80F-7.4.13-FW-build2933-260101:opmode=0:vdom=0:user=admin
 config system global
     set hostname "FW-SITE"
+    set admin-https-redirect enable
 end
 config system interface
     edit "wan1"
@@ -304,6 +305,7 @@ config system interface
     next
     edit "LAN_SITE"
         set ip 10.33.43.254 255.255.255.0
+        set allowaccess ping https ssh http
         set role lan
         set interface "internal1"
         set vlanid 43
@@ -314,6 +316,27 @@ config system interface
         set interface "internal1"
         set vlanid 45
     next
+    edit "naf.root"
+        set type tunnel
+    next
+    edit "internal3"
+        set type physical
+    next
+end
+config system sdwan
+    set status enable
+    config zone
+        edit "virtual-wan-link"
+        next
+        edit "WAN_SITE"
+        next
+    end
+    config members
+        edit 1
+            set interface "wan1"
+            set zone "WAN_SITE"
+        next
+    end
 end
 config firewall address
     edit "LAN_43"
@@ -340,7 +363,7 @@ config firewall policy
     edit 39
         set name "Blocage Cyber"
         set srcintf "LAN_SITE"
-        set dstintf "wan1"
+        set dstintf "WAN_SITE"
         set srcaddr "LAN_43"
         set dstaddr "CYBER"
         set schedule "always"
@@ -349,7 +372,7 @@ config firewall policy
     edit 4
         set name "O365"
         set srcintf "LAN_SITE"
-        set dstintf "wan1"
+        set dstintf "WAN_SITE"
         set action accept
         set srcaddr "LAN_43"
         set internet-service enable
@@ -358,7 +381,7 @@ config firewall policy
     next
     edit 16
         set name "TELEMAINTENANCE"
-        set srcintf "wan1"
+        set srcintf "WAN_SITE"
         set dstintf "LAN_SITE"
         set action accept
         set srcaddr "PRESTA"
@@ -379,7 +402,7 @@ config firewall policy
 end
 config firewall local-in-policy
     edit 1
-        set intf "wan1"
+        set intf "WAN_SITE"
         set srcaddr "PRESTA"
         set srcaddr-negate enable
         set dstaddr "all"
@@ -407,3 +430,7 @@ def test_fortigate_real_structure():
     assert got["pol.wide.13"].severity == MINOR                                       # LAN -> invités
     adm = [f.title for f in a.findings if f.id.startswith("expo.admin.")]
     assert adm and all("limité" in t and "198.51.100.224/28" in t for t in adm), adm         # local-in « sauf prestataire »
+    assert "sys.admin.clear" not in got                                               # HTTP redirigé vers HTTPS
+    names = {i.name for i in cfg.interfaces}
+    assert "naf.root" not in names and "internal3" not in names and "wan1" in names     # ports inutilisés retirés
+    assert next(i for i in cfg.interfaces if i.name == "wan1").zone == "WAN_SITE"      # membre SD-WAN

@@ -35,8 +35,11 @@ def _ports(spec: str) -> list[tuple[int, int]]:
 def expected_exposure(c: Ctx) -> list[dict]:
     """Ports publics attendus d'après la configuration : [{port, proto, why, sensitive}]."""
     exp = []
+    allowed = [r for r in c.active if r.action == ALLOW and c.from_wan(r)]
     for n in c.cfg.nat:
         if not n.enabled:
+            continue
+        if "Fortinet" in c.cfg.vendor and not any(r.dst_set.contains_ip(n.int_ip) for r in allowed):
             continue
         for lo, hi in _ports(n.ext_ports) or [(0, 0)]:
             for p in range(lo, min(hi, lo + 50) + 1) if lo else [0]:
@@ -134,7 +137,7 @@ def admin_from_wan(c: Ctx):
                 # refus « tout sauf ces adresses » sur l'accès au pare-feu (local-in FortiGate) : accès limité
                 lim = next((r for r in c.active if r.layer == "input" and r.action == DENY and r.src_set.negate and port
                             and r.svc_set.has_port(port, 17 if port == 161 else 6)
-                            and (not r.src_zones or i.name in r.src_zones)), None)
+                            and c.itf_in_zones(i.name, r.src_zones)), None)
                 if lim is not None:
                     sev = min(sev, MINOR)
                     hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », limité(e) à "
