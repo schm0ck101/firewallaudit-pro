@@ -168,8 +168,15 @@ def apply(path: Path) -> str:
             f'move /Y "{path}" "{exe}" >nul 2>&1 || goto wait\r\n'
             f'start "" "{exe}"\r\n'
             ":end\r\n"
-            'del "%~f0"\r\n', encoding="ascii", errors="replace")
-        subprocess.Popen(["cmd.exe", "/c", str(script)], close_fds=True,
-                         creationflags=flags | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            'del "%~f0"\r\n', encoding="oem" if os.name == "nt" else "utf-8", errors="replace")
+        # console CACHÉE héritée par les commandes du script (tasklist, find, ping) : avec un processus détaché,
+        # chacune ouvrait sa propre fenêtre de console
+        si = subprocess.STARTUPINFO() if os.name == "nt" else None
+        if si is not None:
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0
+        subprocess.Popen(["cmd.exe", "/d", "/c", str(script)], close_fds=True, startupinfo=si,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                         | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
         return "La nouvelle version remplacera l'actuelle dès la fermeture, puis se relancera."
     return "Lancé depuis les sources : mettre à jour avec git."
