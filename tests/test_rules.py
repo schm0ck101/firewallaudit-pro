@@ -209,3 +209,25 @@ def test_partial_and_empty_inputs():
     for snap in ({}, {"config": {"vendor": "X"}}, {"config": {"vendor": "X", "rules": [], "interfaces": []}, "tests": {"egress": {"error": "x"}}}):
         a = analyze(snap)
         assert not a.rule_errors, a.rule_errors
+
+
+def test_watchguard_real_structure():
+    """Structure relevée sur un vrai Firebox (Fireware 2026.4) : politiques proxy (laissent passer, avec inspection),
+    alias « .snat » = publications, alias imbriqués, interfaces non configurées, lien externe non nommé « External »."""
+    cfg = load.from_file(CFG / "watchguard_fireware2026.xml")[0]
+    roles = {i.name: (i.role, i.ips) for i in cfg.interfaces}
+    assert roles["OPERATEUR"][0] == "wan" and roles["vlan-invite"][0] == "guest"
+    assert roles["AGGR-LAN"][1] == [] and roles["LA-1"][1] == []                   # 0.0.0.0 : pas de réseau « tout »
+    by = {r.name: r for r in cfg.rules}
+    assert by["SMTP-proxy Sortant-00"].action == "allow" and by["HTTP-proxy de base-00"].profiles
+    assert by["Unhandled External Packet-00"].action == "deny"
+    nat = {n.id: n for n in cfg.nat}
+    assert nat["VIP-FTP.snat"].int_ip == "192.168.1.20" and nat["VIP-RDP.snat"].src_restrict == ["198.51.100.10"]
+    assert "198.51.100.10" in by["EVODE-RDP-00"].src_set.describe()                # alias imbriqué résolu
+    tests = {"egress": {"tcp": {"25": {"open": True}, "80": {"open": True}}}}
+    a = run(cfg, tests)
+    got = {f.id: f.severity for f in a.findings}
+    assert not [i for i in got if i.startswith("test.egress.mismatch")], got        # le proxy SMTP laisse passer : pas d'incohérence
+    assert got.get("pol.inbound.3") == MAJOR                                          # FTP publié depuis tout Internet
+    assert got.get("pol.wide.7") == MINOR                                             # tout autorisé dans le tunnel
+    assert not [i for i in got if i.endswith(".2")], got                              # « Any From Firebox » : politique système

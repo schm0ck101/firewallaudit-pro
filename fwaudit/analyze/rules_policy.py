@@ -3,7 +3,7 @@ cloisonnement entre zones, règles masquées / redondantes / inutilisées,
 journalisation, inspections de sécurité, politique par défaut, hygiène."""
 from __future__ import annotations
 
-from ..fw.model import ALLOW, ANY, DENY, GUEST, IOT, LAN, WAN
+from ..fw.model import ALLOW, ANY, DENY, GUEST, IOT, LAN, VPN, WAN
 from .context import SENSITIVE, Ctx, covers
 from .model import CRIT, INFO, MAJOR, MINOR, POL
 
@@ -35,6 +35,12 @@ def any_any(c: Ctx):
                   "Un poste infecté peut joindre n'importe quel serveur sur n'importe quel port (exfiltration, botnet, spam).",
                   "Limiter la sortie aux services nécessaires (web, DNS vers les résolveurs internes, messagerie…), "
                   "ou au minimum appliquer filtrage web, IPS et contrôle applicatif sur cette règle.")
+        elif VPN in (sr | dr):
+            c.add(f"pol.wide.{r.id}", POL, MINOR, f"Tout autorisé à travers un VPN : {r.label()}",
+                  c.describe(r),
+                  "Le site ou les utilisateurs distants accèdent à tous les services : une machine compromise de l'autre côté "
+                  "du tunnel atteint directement ce réseau.",
+                  "Limiter le tunnel aux réseaux et services réellement utilisés (ex. serveurs de fichiers, ERP, téléphonie).")
         else:
             c.add(f"pol.wide.{r.id}", POL, MAJOR, f"Règle « tout autoriser » entre zones internes : {r.label()}",
                   c.describe(r), "Le cloisonnement entre ces réseaux est annulé : une machine compromise atteint toutes les autres.",
@@ -48,7 +54,7 @@ def egress_from_lan(c: Ctx):
         return
     for r in c.active:
         if (r.action != ALLOW or r.extra_conditions or r.src_set.is_any or not r.dst_set.is_any or not r.svc_set.is_any
-                or r.src_set.is_public() or c.to_firewall(r) or f"pol.egress.{r.id}" in {f.id for f in c.findings}):
+                or r.src_set.is_public() or c.to_firewall(r) or c.is_default(r) or f"pol.egress.{r.id}" in {f.id for f in c.findings}):
             continue
         if GUEST in c.roles(r.src_zones) or all(role == GUEST for _n, role, a in c.nets_by_role((GUEST, LAN, IOT))
                                                 if a.surely_intersects(r.src_set)) and c.nets_by_role((GUEST,)) and \

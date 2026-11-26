@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<!-- Structure relevée sur un vrai Firebox (Fireware 2026.4, 57 politiques), anonymisée : proxys, alias « .snat »,
+     alias imbriqués, interfaces non configurées (0.0.0.0), lien externe non nommé « External », politiques système. -->
+<profile>
+  <for-version>2026.4.0</for-version>
+  <system-parameters><device-conf><system-name>FBX-CLIENT</system-name></device-conf></system-parameters>
+  <interface-list>
+    <interface><name>OPERATEUR</name><if-property>2</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>203.0.113.77</ip><netmask>255.255.255.248</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>LAN</name><if-property>1</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>192.168.1.1</ip><netmask>255.255.255.0</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>AGGR-LAN</name><if-property>1</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>0.0.0.0</ip><netmask>0.0.0.0</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>LA-1</name><if-property>0</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>0.0.0.0</ip><netmask>255.255.255.0</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>vlan-invite</name><if-property>1</if-property><if-item-list><item><vlan-if><ip>192.168.2.254</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
+    <interface><name>VOIP</name><if-property>1</if-property><if-item-list><item><vlan-if><ip>192.168.200.254</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
+  </interface-list>
+  <address-group-list>
+    <address-group><name>EVODE.1</name><addr-group-member><member><type>1</type><host-ip-addr>198.51.100.10</host-ip-addr></member></addr-group-member></address-group>
+    <address-group><name>VIP-FTP.1.snat</name><addr-group-member><member><type>1</type><host-ip-addr>192.168.1.20</host-ip-addr></member></addr-group-member></address-group>
+  </address-group-list>
+  <alias-list>
+    <alias><name>Any-External</name><alias-member-list><alias-member><interface>OPERATEUR</interface></alias-member></alias-member-list></alias>
+    <alias><name>Any-Trusted</name><alias-member-list><alias-member><interface>LAN</interface></alias-member><alias-member><interface>vlan-invite</interface></alias-member><alias-member><interface>VOIP</interface></alias-member></alias-member-list></alias>
+    <alias><name>EVODE</name><alias-member-list><alias-member><alias-name>EVODE-HOSTS</alias-name><interface>Any</interface></alias-member></alias-member-list></alias>
+    <alias><name>EVODE-HOSTS</name><alias-member-list><alias-member><address>EVODE.1</address><interface>Any</interface></alias-member></alias-member-list></alias>
+    <alias><name>VIP-FTP.snat</name><alias-member-list><alias-member><address>VIP-FTP.1.snat</address></alias-member></alias-member-list></alias>
+    <alias><name>VIP-RDP.snat</name><alias-member-list><alias-member><address>192.168.1.21</address></alias-member></alias-member-list></alias>
+    <alias><name>TUNNEL-SECOND</name><alias-member-list><alias-member><address>Any</address><interface>SECOND</interface></alias-member></alias-member-list></alias>
+  </alias-list>
+  <service-list>
+    <service><name>Any</name><service-item><member><type>1</type><protocol>0</protocol><server-port>0</server-port></member></service-item></service>
+    <service><name>FTP</name><service-item><member><type>1</type><protocol>6</protocol><server-port>21</server-port></member></service-item></service>
+    <service><name>SMTP-proxy</name><service-item><member><type>1</type><protocol>6</protocol><server-port>25</server-port></member><member><type>1</type><protocol>6</protocol><server-port>465</server-port></member></service-item></service>
+    <service><name>HTTP-proxy</name><service-item><member><type>1</type><protocol>6</protocol><server-port>80</server-port></member></service-item></service>
+    <service><name>RDP</name><service-item><member><type>1</type><protocol>6</protocol><server-port>3389</server-port></member></service-item></service>
+    <service><name>IKE</name><service-item><member><type>1</type><protocol>17</protocol><server-port>500</server-port></member><member><type>1</type><protocol>17</protocol><server-port>4500</server-port></member></service-item></service>
+  </service-list>
+  <policy-list>
+    <policy><name>Allow-IKE-to-Firebox</name><service>IKE</service><firewall>1</firewall><enable>1</enable><log>0</log>
+      <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>Firebox</alias></to-alias-list></policy>
+    <policy><name>Any From Firebox-00</name><service>Any</service><firewall>1</firewall><enable>1</enable><log>0</log>
+      <from-alias-list><alias>Firebox</alias></from-alias-list><to-alias-list><alias>Any</alias></to-alias-list></policy>
+    <policy><name>FTP-00</name><service>FTP</service><firewall>1</firewall><enable>1</enable><log>1</log>
+      <from-alias-list><alias>Any-External</alias></from-alias-list><to-alias-list><alias>VIP-FTP.snat</alias></to-alias-list></policy>
+    <policy><name>SMTP-proxy Sortant-00</name><service>SMTP-proxy</service><firewall>3</firewall><proxy>SMTP-Outgoing.Standard</proxy><enable>1</enable><log>1</log>
+      <from-alias-list><alias>Any-Trusted</alias></from-alias-list><to-alias-list><alias>Any-External</alias></to-alias-list></policy>
+    <policy><name>HTTP-proxy de base-00</name><service>HTTP-proxy</service><firewall>3</firewall><enable>1</enable><log>1</log>
+      <from-alias-list><alias>Any-Trusted</alias></from-alias-list><to-alias-list><alias>Any-External</alias></to-alias-list></policy>
+    <policy><name>EVODE-RDP-00</name><service>RDP</service><firewall>1</firewall><enable>1</enable><log>1</log>
+      <from-alias-list><alias>EVODE</alias></from-alias-list><to-alias-list><alias>VIP-RDP.snat</alias></to-alias-list></policy>
+    <policy><name>BOVPN-Allow.out-00</name><service>Any</service><firewall>1</firewall><enable>1</enable><log>1</log>
+      <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>TUNNEL-SECOND</alias></to-alias-list></policy>
+    <policy><name>Unhandled External Packet-00</name><service>Any</service><firewall>2</firewall><enable>1</enable><log>1</log>
+      <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>Any</alias></to-alias-list></policy>
+  </policy-list>
+  <tunnel-list><tunnel><name>SECOND</name><gateway-name>GW-SECOND</gateway-name></tunnel></tunnel-list>
+</profile>
