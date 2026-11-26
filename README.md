@@ -10,11 +10,11 @@ est un tableau à cocher.
 
 | Constructeur | Source | État |
 |---|---|---|
-| Fortinet FortiGate | sauvegarde `.conf` (multi-VDOM) ou API REST (jeton lecture seule, compteurs d'utilisation des règles) | à valider sur exports réels |
-| Stormshield SNS | sauvegarde `.na` sans mot de passe, ou dossier `ConfigFiles` zippé | à valider |
+| Fortinet FortiGate | sauvegarde `.conf` (multi-VDOM, SD-WAN) ou API REST (jeton lecture seule, compteurs d'utilisation des règles) | **validé** (FortiOS 7.4) |
+| Stormshield SNS | sauvegarde `.na` faite sans mot de passe, ou dossier `ConfigFiles` zippé | **validé** (SNS 4.8) |
 | Sophos Firewall (SFOS) | export de configuration (`.tar` / `Entities.xml`) | à valider |
-| WatchGuard Firebox | configuration XML de Policy Manager | à valider |
-| UniFi (UDM, UCG, UXG…) | API de la console, compte local en lecture seule (pare-feu par zones et anciennes règles) | à valider |
+| WatchGuard Firebox | configuration XML de Policy Manager | **validé** (Fireware 2026.4) |
+| UniFi (UDM, UCG, UXG…) | API de la console, compte local en lecture seule (pare-feu par zones et anciennes règles) | **validé** (Network 11) |
 | MikroTik RouterOS | `/export` (`.rsc`) ou SSH en lecture (compteurs inclus) | à valider |
 | Pare-feu Windows | ce poste, ou fichier produit par `--windows-export` sur un serveur | **validé** |
 
@@ -52,3 +52,38 @@ Ligne de commande :
 
 Python 3.13 + PySide6 6.9 (Windows 10/11 et Server 2016+). Lecteurs, ensembles d'adresses/services et tests écrits sans
 dépendance ; SSH (MikroTik) via paramiko. Compilation : `build.ps1` (tests, exécutable, portable, installateur, release).
+
+## Mises à jour
+
+Au démarrage (désactivable dans Paramètres), l'application consulte la dernière release de ce dépôt GitHub et propose
+la mise à jour : téléchargement, contrôle de l'empreinte SHA-256 publiée par GitHub, puis installation (version
+installée) ou remplacement de l'exécutable à la fermeture (version portable). Rien n'est installé sans accord.
+
+## Licence
+
+[MIT](LICENSE) — © 2026 SCHMOCK.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers:** [SCHMOCK](https://github.com/schm0ck101)
+- **Approvers:** [SCHMOCK](https://github.com/schm0ck101)
+
+Release binaries (portable executable and installer) are built from this repository by GitHub Actions
+(`.github/workflows/build.yml`) and signed through SignPath; every release is approved manually.
+
+### Privacy policy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user
+or the person installing or operating it. It contains no telemetry and no analytics. Network connections:
+
+- **Update check** (can be disabled in Settings): `api.github.com` and `github.com` (latest release of this repository).
+- **Firewall configuration**: only the device whose address the user enters (read-only API / SSH), or a local file.
+- **Real tests, only when the user starts an audit with tests enabled**: outbound filtering test servers
+  (`letmeoutofyour.net`, `portquiz.net`), public DNS resolvers (`8.8.8.8`, `1.1.1.1`, `9.9.9.9`, `208.67.222.222`,
+  DNS-over-HTTPS `cloudflare-dns.com`), `pool.ntp.org`, public IP lookup (`myip.opendns.com`), connectivity check
+  (`www.msftconnecttest.com`), scans of the networks and public addresses selected by the user.
+
+Audit results stay on the computer (local database next to the portable executable or in `%APPDATA%`).
