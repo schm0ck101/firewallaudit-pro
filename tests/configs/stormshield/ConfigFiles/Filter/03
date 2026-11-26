@@ -1,0 +1,11 @@
+[Filter]
+separator color="c0c0c0" comment="Administration" collapse="0"
+pass from any to firewall_out port firewall_srv # Admin depuis partout
+pass inspection ips from lan_in to any # Internet
+pass from any on out to srv_rds port rdp # Publication RDS
+pass ipproto tcp from any on out to srv_mail port smtp # Mail entrant
+off pass from any to any # ancienne regle tout ouvert
+block all # interdit par defaut
+[NAT]
+nat from any on out to firewall_out port rdp -> from any to srv_rds port rdp # NAT RDS
+nat from any on out to firewall_out port smtp -> from any to srv_mail port smtp # NAT mail

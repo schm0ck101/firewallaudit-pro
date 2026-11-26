@@ -1,0 +1,11 @@
+[Host]
+srv_rds=10.1.1.10,resolve=static,mac=,comment=Serveur RDS
+srv_mail=10.1.2.25,resolve=static,mac=,comment=
+
+[Network]
+lan_in=10.1.1.0/24,comment=
+
+[Service]
+rdp=3389,proto=tcp,comment=
+smtp=25,proto=tcp,comment=
+web_admin=8443,proto=tcp,comment=

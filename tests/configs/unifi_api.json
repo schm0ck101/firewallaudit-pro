@@ -1,0 +1,47 @@
+{
+  "host": "192.0.2.1",
+  "sysinfo": [{"version": "9.4.19", "name": "Bureau"}],
+  "devices": [{"type": "udm", "model": "UDMPRO", "name": "UDM-Bureau", "version": "4.3.6", "serial": "X1"}],
+  "networks": [
+    {"_id": "n-wan", "name": "Internet 1", "purpose": "wan"},
+    {"_id": "n-lan", "name": "Bureau", "purpose": "corporate", "ip_subnet": "10.20.10.1/24", "vlan_enabled": false},
+    {"_id": "n-iot", "name": "IoT", "purpose": "corporate", "ip_subnet": "10.20.20.1/24", "vlan": 20, "vlan_enabled": true},
+    {"_id": "n-guest", "name": "Invites", "purpose": "guest", "ip_subnet": "10.20.40.1/24", "vlan": 40, "vlan_enabled": true},
+    {"_id": "n-vpn", "name": "VPN L2TP", "purpose": "remote-user-vpn", "vpn_type": "l2tp-server", "ip_subnet": "10.20.99.1/24"}
+  ],
+  "zones": [
+    {"_id": "z-int", "name": "Internal", "zone_key": "internal", "network_ids": ["n-lan", "n-iot"]},
+    {"_id": "z-ext", "name": "External", "zone_key": "external", "network_ids": []},
+    {"_id": "z-gw", "name": "Gateway", "zone_key": "gateway", "network_ids": []},
+    {"_id": "z-hot", "name": "Hotspot", "zone_key": "hotspot", "network_ids": ["n-guest"]},
+    {"_id": "z-vpn", "name": "Vpn", "zone_key": "vpn", "network_ids": ["n-vpn"]}
+  ],
+  "policies": [
+    {"_id": "p1", "index": 10000, "name": "IoT: Domotique vers tout", "enabled": true, "action": "ALLOW", "protocol": "all",
+     "source": {"zone_id": "z-int", "matching_target": "IP", "ips": ["10.20.20.10"], "port_matching_type": "ANY"},
+     "destination": {"zone_id": "z-int", "matching_target": "ANY", "port_matching_type": "ANY"}, "logging": false},
+    {"_id": "p2", "index": 10001, "name": "IoT: bloquer vers Bureau", "enabled": true, "action": "BLOCK", "protocol": "all",
+     "source": {"zone_id": "z-int", "matching_target": "NETWORK", "network_ids": ["n-iot"], "port_matching_type": "ANY"},
+     "destination": {"zone_id": "z-int", "matching_target": "NETWORK", "network_ids": ["n-lan"], "port_matching_type": "ANY"}, "logging": true},
+    {"_id": "p3", "index": 10002, "name": "Admin console depuis Internet", "enabled": true, "action": "ALLOW", "protocol": "tcp",
+     "source": {"zone_id": "z-ext", "matching_target": "ANY", "port_matching_type": "ANY"},
+     "destination": {"zone_id": "z-gw", "matching_target": "ANY", "port_matching_type": "SPECIFIC", "port": "443"}, "logging": false},
+    {"_id": "p4", "index": 10003, "name": "IoT: Domotique vers NAS (masquee)", "enabled": true, "action": "ALLOW", "protocol": "tcp",
+     "source": {"zone_id": "z-int", "matching_target": "IP", "ips": ["10.20.20.10"], "port_matching_type": "ANY"},
+     "destination": {"zone_id": "z-int", "matching_target": "IP", "ips": ["10.20.10.11"], "port_matching_type": "SPECIFIC", "port": "5001"}, "logging": false}
+  ],
+  "portforward": [
+    {"_id": "f1", "name": "Plex", "enabled": true, "dst_port": "32400", "fwd": "10.20.10.12", "fwd_port": "32400", "proto": "tcp", "src": "any"},
+    {"_id": "f2", "name": "RDP", "enabled": true, "dst_port": "3389", "fwd": "10.20.10.50", "fwd_port": "3389", "proto": "tcp_udp", "src": "any"}
+  ],
+  "groups": [],
+  "settings": [
+    {"key": "ips", "ips_mode": "ids", "enabled_categories": ["emerging-scan"], "honeypot_enabled": false},
+    {"key": "usg", "upnp_enabled": true},
+    {"key": "mgmt", "x_ssh_enabled": true, "x_ssh_password_auth": true, "auto_upgrade": false},
+    {"key": "snmp", "enabled": true, "community": "public"}
+  ],
+  "wlans": [{"name": "Bureau", "security": "wpapsk", "wpa_mode": "wpa2", "wpa3_support": false, "pmf_mode": "disabled", "enabled": true},
+            {"name": "Invites", "security": "open", "is_guest": true, "enabled": true, "l2_isolation": true}],
+  "admins": [{"name": "admin", "role": "admin"}]
+}

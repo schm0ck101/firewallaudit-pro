@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration APIVersion="1905.1" IPS_CAT_VER="1">
+  <Zone><Name>LAN</Name><Type>LAN</Type>
+    <ApplianceAccess><AdminServices><HTTPS>Enable</HTTPS><SSH>Enable</SSH></AdminServices>
+      <NetworkServices><DNS>Enable</DNS><Ping>Enable</Ping></NetworkServices></ApplianceAccess></Zone>
+  <Zone><Name>WAN</Name><Type>WAN</Type>
+    <ApplianceAccess><AdminServices><HTTPS>Enable</HTTPS><SSH>Disable</SSH></AdminServices>
+      <OtherServices><UserPortal>Enable</UserPortal></OtherServices><NetworkServices><Ping>Enable</Ping></NetworkServices></ApplianceAccess></Zone>
+  <Zone><Name>DMZ</Name><Type>DMZ</Type></Zone>
+  <Zone><Name>GUEST</Name><Type>LAN</Type></Zone>
+  <Interface><Name>Port1</Name><NetworkZone>LAN</NetworkZone><IPAddress>172.16.16.16</IPAddress><Netmask>255.255.255.0</Netmask><Hardware>Port1</Hardware></Interface>
+  <Interface><Name>Port2</Name><NetworkZone>WAN</NetworkZone><IPAddress>203.0.113.10</IPAddress><Netmask>255.255.255.248</Netmask><Hardware>Port2</Hardware></Interface>
+  <VLAN><Name>Port1.20</Name><Hardware>Port1</Hardware><Zone>GUEST</Zone><VLANID>20</VLANID></VLAN>
+  <IPHost><Name>LAN_NET</Name><IPFamily>IPv4</IPFamily><HostType>Network</HostType><IPAddress>172.16.16.0</IPAddress><Subnet>255.255.255.0</Subnet></IPHost>
+  <IPHost><Name>SRV-ERP</Name><IPFamily>IPv4</IPFamily><HostType>IP</HostType><IPAddress>172.16.16.20</IPAddress></IPHost>
+  <IPHost><Name>SRV-SQL</Name><IPFamily>IPv4</IPFamily><HostType>IP</HostType><IPAddress>172.16.16.21</IPAddress></IPHost>
+  <IPHostGroup><Name>SERVEURS</Name><HostList><Host>SRV-ERP</Host><Host>SRV-SQL</Host></HostList></IPHostGroup>
+  <Services><Name>RDP</Name><Type>TCPorUDP</Type><ServiceDetails><ServiceDetail><SourcePort>1:65535</SourcePort><DestinationPort>3389</DestinationPort><Protocol>TCP</Protocol></ServiceDetail></ServiceDetails></Services>
+  <Services><Name>MSSQL</Name><Type>TCPorUDP</Type><ServiceDetails><ServiceDetail><SourcePort>1:65535</SourcePort><DestinationPort>1433</DestinationPort><Protocol>TCP</Protocol></ServiceDetail></ServiceDetails></Services>
+  <Services><Name>HTTPS</Name><Type>TCPorUDP</Type><ServiceDetails><ServiceDetail><SourcePort>1:65535</SourcePort><DestinationPort>443</DestinationPort><Protocol>TCP</Protocol></ServiceDetail></ServiceDetails></Services>
+  <FirewallRule><Name>Internet LAN</Name><Description>Accès Internet</Description><IPFamily>IPv4</IPFamily><Status>Enable</Status><PolicyType>Network</PolicyType>
+    <NetworkPolicy><Action>Accept</Action><LogTraffic>Enable</LogTraffic>
+      <SourceZones><Zone>LAN</Zone></SourceZones><DestinationZones><Zone>WAN</Zone></DestinationZones><Schedule>All The Time</Schedule>
+      <WebFilter>Default Workplace Policy</WebFilter><IntrusionPrevention>generalpolicy</IntrusionPrevention><ScanVirus>Enable</ScanVirus>
+    </NetworkPolicy></FirewallRule>
+  <FirewallRule><Name>Invites vers tout</Name><IPFamily>IPv4</IPFamily><Status>Enable</Status><PolicyType>Network</PolicyType>
+    <NetworkPolicy><Action>Accept</Action><LogTraffic>Disable</LogTraffic>
+      <SourceZones><Zone>GUEST</Zone></SourceZones><Schedule>All The Time</Schedule><WebFilter>None</WebFilter><IntrusionPrevention>None</IntrusionPrevention>
+    </NetworkPolicy></FirewallRule>
+  <FirewallRule><Name>SQL depuis Internet</Name><IPFamily>IPv4</IPFamily><Status>Enable</Status><PolicyType>Network</PolicyType>
+    <NetworkPolicy><Action>Accept</Action><LogTraffic>Disable</LogTraffic>
+      <SourceZones><Zone>WAN</Zone></SourceZones><DestinationZones><Zone>LAN</Zone></DestinationZones>
+      <DestinationNetworks><Network>SERVEURS</Network></DestinationNetworks><Services><Service>MSSQL</Service><Service>RDP</Service></Services>
+      <Schedule>All The Time</Schedule><IntrusionPrevention>None</IntrusionPrevention></NetworkPolicy></FirewallRule>
+  <FirewallRule><Name>ERP masquee</Name><IPFamily>IPv4</IPFamily><Status>Enable</Status><PolicyType>Network</PolicyType>
+    <NetworkPolicy><Action>Drop</Action><LogTraffic>Enable</LogTraffic>
+      <SourceZones><Zone>LAN</Zone></SourceZones><DestinationZones><Zone>WAN</Zone></DestinationZones>
+      <SourceNetworks><Network>SRV-ERP</Network></SourceNetworks><Schedule>All The Time</Schedule></NetworkPolicy></FirewallRule>
+  <NATRule><Name>Publication RDP</Name><Status>Enable</Status>
+    <OriginalSourceNetworks><Network>Any</Network></OriginalSourceNetworks><OriginalDestinationNetworks><Network>#Port2</Network></OriginalDestinationNetworks>
+    <OriginalServices><Service>RDP</Service></OriginalServices><TranslatedDestination>SRV-ERP</TranslatedDestination></NATRule>
+  <User><Username>admin</Username><UserType>Administrator</UserType><Profile>Administrator</Profile><Status>Active</Status></User>
+  <IPSecPolicy><Name>LegacyPolicy</Name><KeyExchange>IKEv1</KeyExchange><AuthenticationMode>Aggressive Mode</AuthenticationMode>
+    <Phase1><EncryptionAlgorithm1>3DES</EncryptionAlgorithm1><AuthenticationAlgorithm1>MD5</AuthenticationAlgorithm1><DHGroups><DHGroup>2(DH1024)</DHGroup></DHGroups></Phase1></IPSecPolicy>
+  <SiteToSiteVPN><Name>Agence</Name><Policy>LegacyPolicy</Policy><AuthenticationType>PresharedKey</AuthenticationType><RemoteHost>198.51.100.80</RemoteHost></SiteToSiteVPN>
+  <SNMPCommunity><Name>public</Name></SNMPCommunity>
+</Configuration>
