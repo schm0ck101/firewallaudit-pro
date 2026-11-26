@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from .analyze.engine import Analysis
-from .analyze.model import CRIT, DOMAINS, DOMAIN_SHORT, INFO, MAJOR, MINOR, NOT_CHECKED, OK, SEVERITY
+from .analyze.model import CRIT, DOMAINS, DOMAIN_SHORT, INFO, MAJOR, MINOR, NOT_CHECKED, OK, SEVERITY, Finding
 from .config import APP_NAME, APP_VERSION, AUTHOR, AUTHOR_URL
 from .followup import color as fu_color, is_closed, label as fu_label
 
@@ -147,6 +147,7 @@ CSS = f"""
   td.lbl {{ color: {MUTED}; }}
   table.plan th {{ font-size: 7.5pt; color: {MUTED}; font-weight: 600; padding: 4px 6px; border-bottom: 1.5px solid {NAVY}; }}
   table.plan td {{ padding: 6px 6px; border-bottom: 1px solid {LINE}; vertical-align: top; }}
+  table.planrow td {{ padding: 6px 6px; vertical-align: top; }}
 """
 
 
@@ -220,6 +221,30 @@ def _keep_together(doc, page_h: float, min_gap: float) -> None:
             return
 
 
+def _group_head(grp) -> str:
+    """Titre commun d'un groupe de constats (« Sortie sans restriction depuis 10.33.43.0/24 : #1 » … -> « Sortie sans
+    restriction »)."""
+    import os
+    common = os.path.commonprefix([g.title for g in grp])
+    if " : " in common:
+        common = common.split(" : ", 1)[0]
+    elif not common.endswith(" "):
+        common = common.rsplit(" ", 1)[0]
+    words = common.strip().rstrip(":").split()
+    while words and words[-1].lower() in ("depuis", "vers", "à", "de", "du", "des", "sur", "pour", "le", "la", "les", "«"):
+        words.pop()
+    return " ".join(words) or grp[0].title.split(" : ", 1)[0]
+
+
+def _group_item(g) -> str:
+    """Ligne d'un constat dans un groupe : le détail s'il reprend déjà le nom de la règle, sinon titre spécifique + détail."""
+    spec = g.title.split(" : ", 1)[1] if " : " in g.title else g.title
+    det = (g.detail or "").strip()
+    if det.startswith(spec) or (spec.split(" ")[0] and det.startswith(spec.split(" ")[0])):
+        return det
+    return spec + (f" — {det}" if det else "")
+
+
 def _pill(text: str, bg: str, fg: str = "#ffffff") -> str:
     return (f"<span style='background-color:{bg}; color:{fg}; font-size:7.5pt; font-weight:600'>"
             f"&nbsp;&nbsp;{_e(text.upper())}&nbsp;&nbsp;</span>")
@@ -279,35 +304,66 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
         h.append(f"<p class='muted'>{_plural(len(probs), 'point à traiter', 'points à traiter')}, du plus urgent au moins urgent"
                  + (f" · suivi au {time.strftime('%d/%m/%Y')} : {closed} traité(s)" + (f", {planned} prévu(s)" if planned else "") if fus else "")
                  + ". ⚠ = risque à venir.</p>")
-        h.append("<table width='100%' cellspacing='0' cellpadding='0' class='plan' style='margin-top:8px'><thead><tr>"
-                 "<th width='4%'></th><th width='11%' align='left'>Gravité</th><th width='40%' align='left'>Problème constaté</th>"
-                 "<th width='31%' align='left'>Action à mener</th><th width='14%' align='left'>Suivi</th></tr></thead>")
+        # une ligne = un tableau indépendant : une ligne n'est jamais coupée entre deux pages (_keep_together) ;
+        # les éléments de preuve vont sous le constat (texte normal, 3 au plus), la colonne Action ne garde que l'action
+        cols = "<col width='4%'><col width='10%'><col width='50%'><col width='26%'><col width='10%'>"
+        h.append("<table width='100%' cellspacing='0' cellpadding='0' class='plan' style='margin-top:8px'>"
+                 "<tr><th width='4%'></th><th width='10%' align='left'>Gravité</th><th width='50%' align='left'>Problème constaté</th>"
+                 "<th width='26%' align='left'>Action à mener</th><th width='10%' align='left'>Suivi</th></tr></table>")
+        rows = []
         for f in probs:
-            fu = fus.get(f.id)
+            key = (f.id.rsplit(".", 1)[0], f.severity, f.fix, f.domain)
+            same = [g for g in probs if (g.id.rsplit(".", 1)[0], g.severity, g.fix, g.domain) == key]
+            if len(same) >= 3 and " : " in f.title:
+                if same[0] is f:
+                    rows.append(same)
+            else:
+                rows.append([f])
+        for grp in rows:
+            f = grp[0]
+            if len(grp) > 1:
+                ids = [g.id for g in grp]
+                f = Finding(id=f.id, domain=f.domain, severity=f.severity, title=f"{_group_head(grp)} ({len(grp)})", detail="",
+                            impact=f.impact, fix=f.fix, predictive=any(g.predictive for g in grp),
+                            evidence=[_group_item(g) for g in grp])
+                fl = [fus.get(i) for i in ids]
+                fu = fl[0] if all(x and x.get("status") == (fl[0] or {}).get("status") for x in fl) else None
+            else:
+                fu = fus.get(f.id)
             done = (fu or {}).get("status") == "done"
             shut = is_closed(fu)
             ink = "#9aa5b1" if shut else INK
+            sub = "#b0b8c2" if shut else MUTED
             box = (f"<span style='font-size:12pt; color:{SEV_COLOR[OK]}'>☑</span>" if done
                    else f"<span style='font-size:12pt; color:#8a96a6'>☐</span>")
             det = (f.detail or "").strip()
-            if len(det) > 150:
-                det = det[:147].rsplit(" ", 1)[0] + "…"
+            if len(det) > 180:
+                det = det[:177].rsplit(" ", 1)[0] + "…"
             dom = DOMAIN_SHORT.get(f.domain, DOMAINS.get(f.domain, ""))
             st = fu_label(fu) if fu else ""
             stc = fu_color(fu) or MUTED
             note = (fu or {}).get("note") or ""
+            ev = ""
+            if f.evidence:
+                items = []
+                lim = 8 if len(grp) > 1 else 3
+                for x in f.evidence[:lim]:
+                    x = str(x)
+                    items.append(_e(x if len(x) <= 140 else x[:137].rsplit(" ", 1)[0] + "…"))
+                more = len(f.evidence) - lim
+                ev = (f"<p class='small' style='color:{sub}; margin-top:3px'>• " + "<br>• ".join(items)
+                      + (f"<br><i>… et {more} autre(s)</i>" if more > 0 else "") + "</p>")
             h.append(
-                f"<tr><td align='center'>{box}</td>"
-                f"<td>{_pill(SEVERITY[f.severity], '#b9c1cb' if shut else SEV_COLOR[f.severity])}</td>"
-                f"<td><p style='color:{ink}; font-weight:600'>{'⚠ ' if f.predictive else ''}{_e(f.title)}</p>"
-                f"<p class='small' style='color:{'#b0b8c2' if shut else MUTED}'>{_e(dom)}{(' · ' + _e(det)) if det else ''}</p></td>"
-                f"<td class='small' style='color:{'#9aa5b1' if shut else '#2d3a48'}'>{_e(f.fix)}"
-                + (f"<p class='ev'>{'<br>'.join(_e(x) for x in f.evidence[:4])}{' …' if len(f.evidence) > 4 else ''}</p>" if f.evidence else "")
-                + "</td>"
-                f"<td class='small'><p style='color:{stc}; font-weight:600'>{_e(st)}</p>"
+                f"<table width='100%' cellspacing='0' cellpadding='0' class='planrow'>{cols}<tr>"
+                f"<td width='4%' align='center'>{box}</td>"
+                f"<td width='10%'>{_pill(SEVERITY[f.severity], '#b9c1cb' if shut else SEV_COLOR[f.severity])}</td>"
+                f"<td width='50%'><p style='color:{ink}; font-weight:600'>{'⚠ ' if f.predictive else ''}{_e(f.title)}</p>"
+                f"<p class='small' style='color:{sub}'>{_e(dom)}{(' · ' + _e(det)) if det else ''}</p>{ev}</td>"
+                f"<td width='26%' class='small' style='color:{'#9aa5b1' if shut else '#2d3a48'}'>{_e(f.fix)}</td>"
+                f"<td width='10%' class='small'><p style='color:{stc}; font-weight:600'>{_e(st) or '&nbsp;'}</p>"
                 + (f"<p style='color:{MUTED}'>{_e(note)}</p>" if note else "")
-                + "</td></tr>")
-        h.append("</table>")
+                + "</td></tr>"
+                f"<tr><td colspan='5' bgcolor='{LINE}' height='1' style='padding:0; font-size:1pt'></td></tr></table>")
     if infos:
         h.append(_h3("Pour information"))
         h.append("<table width='100%' cellspacing='0' cellpadding='0' class='grid'>")
