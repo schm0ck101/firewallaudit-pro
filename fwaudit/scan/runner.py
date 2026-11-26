@@ -137,11 +137,11 @@ def run(opts: Options, progress=None, cancel: threading.Event | None = None) -> 
                 for cidr in i.ips:
                     try:
                         if ip in ipaddress.IPv4Interface(cidr).network:
-                            here = {"network": n["network"], "interface": i.name, "role": i.role}
+                            here = {"network": n["network"], "interface": i.name, "role": i.role, "ip": n["local_ip"]}
                     except ValueError:
                         continue
         if not here and nets:
-            here = {"network": nets[0]["network"], "interface": "", "role": ""}
+            here = {"network": nets[0]["network"], "interface": "", "role": "", "ip": nets[0].get("local_ip", "")}
         snap["tests"]["audit_network"] = here
         snap["tests"]["public_ips"] = sorted(set(_public_candidates(cfg, measured) + opts.public_ips))
         snap["tests"]["public_measured"] = measured

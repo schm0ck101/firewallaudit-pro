@@ -4,6 +4,8 @@ distant exposés, UPnP, résolveur DNS ouvert. Calcule aussi la liste des
 ports qu'on DEVRAIT trouver ouverts de l'extérieur (comparée au scan externe)."""
 from __future__ import annotations
 
+import re
+
 from ..fw.model import ALLOW, DENY, WAN
 from ..fw.sets import AddrSet
 from .context import SENSITIVE, Ctx
@@ -158,7 +160,8 @@ def admin_from_wan(c: Ctx):
     for sev, line in sorted(set(hits), key=lambda x: -x[0]):
         if admins_trusted and sev == MAJOR:
             sev = MINOR
-        c.add(f"expo.admin.{abs(hash(line)) % 10**8}", EXPO, sev, f"Administration du pare-feu exposée : {line}",
+        key = re.sub(r"[^a-z0-9]+", "-", line.split(", limité")[0].split(" depuis ")[0].lower()).strip("-")[:80]
+        c.add(f"expo.admin.{key}", EXPO, sev, f"Administration du pare-feu exposée : {line}",
               "L'interface d'administration du pare-feu est joignable depuis Internet.",
               "Les interfaces d'administration de pare-feu (Fortinet, Sophos, MikroTik…) font l'objet de failles critiques "
               "régulières, exploitées en masse dans les heures qui suivent leur publication.",

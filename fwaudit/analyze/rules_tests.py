@@ -31,7 +31,17 @@ def _config_allows_out(c: Ctx, port: int):
             continue
         if "local" in c.roles(r.src_zones):    # trafic émis par le pare-feu lui-même
             continue
-        if here is not None and not r.src_set.surely_intersects(here) and not r.src_set.is_any:
+        my_ip = (c.tests.get("audit_network") or {}).get("ip")
+        if my_ip:
+            if not r.src_set.contains_ip(my_ip):
+                continue                         # règle d'autres postes (ex. une seule machine) : pas celle du PC d'audit
+        elif here is not None and not r.src_set.is_any and not r.src_set.covers(here):
+            continue
+        target = (c.tests.get("egress") or {}).get("target_ip")
+        d = r.dst_set
+        if not (d.is_any or d.is_internet or (target and d.contains_ip(target))):
+            continue                             # règle visant d'autres destinations précises : sans effet sur le test
+        if r.extra_conditions:
             continue
         return r if r.action == ALLOW else None
     return None
@@ -126,9 +136,10 @@ def egress(c: Ctx):
                 allow = None if other_path else _config_allows_out(c, port)
                 detail = "Connexion de test vers un serveur public réussie depuis ce réseau."
                 if allow is not None:
-                    inspected = [x for x in allow.profiles if x]
+                    inspected = [x for x in allow.profiles if any(k in x.lower() for k in (
+                        "ips", "av-profile", "antivirus", "proxy", "application")) and "ssl-ssh" not in x]
                     detail += f" Flux prévu par la règle {allow.label()}" + (
-                        f", analysé ({', '.join(inspected[:3])})." if inspected else ", sans analyse de sécurité.")
+                        f", analysé ({', '.join(inspected[:3])})." if inspected else ", sans analyse de sécurité de ce trafic.")
                     if inspected and sev > MINOR:
                         sev = MINOR            # voulu et inspecté : reste à restreindre aux serveurs qui en ont besoin
                 c.add(f"test.egress.{port}", TEST, sev, f"Sortie autorisée vers Internet sur le port {port} ({EGRESS_PORTS[port]})",
