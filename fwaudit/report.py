@@ -511,7 +511,7 @@ def export_pdf(path: str | Path, rec: dict, analysis: Analysis, settings, prev: 
         return name
 
     doc.setHtml(_build_html(rec, analysis, rep, prev, add_img))
-    left, right, top, bottom = mm(18), mm(18), mm(24), mm(20)
+    left, right, top, bottom = mm(10), mm(10), mm(17), mm(14)      # marges réduites (demande : plus de contenu par page)
     body = QSizeF(W - left - right, H - top - bottom)
     doc.setPageSize(body)
     _keep_together(doc, body.height(), mm(35))
@@ -614,16 +614,16 @@ def export_pdf(path: str | Path, rec: dict, analysis: Analysis, settings, prev: 
     for i in range(doc.pageCount()):
         writer.newPage()
         # en-tête
-        draw_logo(p, left, mm(10), 3.6)
+        draw_logo(p, left, mm(6), 3.6)
         f_h = font(7.5)
-        text(p, QRectF(W / 2 - mm(10), mm(9), W / 2 - right + mm(10), mm(6)), elide(f"Audit de pare-feu · {head}", f_h, W / 2),
+        text(p, QRectF(W / 2 - mm(10), mm(5), W / 2 - right + mm(10), mm(6)), elide(f"Audit de pare-feu · {head}", f_h, W / 2),
              f_h, MUTED, Qt.AlignRight | Qt.AlignVCenter)
         p.setPen(QPen(QColor(LINE), mm(0.25)))
-        p.drawLine(QPointF(left, mm(16.5)), QPointF(W - right, mm(16.5)))
+        p.drawLine(QPointF(left, mm(12.5)), QPointF(W - right, mm(12.5)))
         # pied
-        p.drawLine(QPointF(left, H - mm(13)), QPointF(W - right, H - mm(13)))
-        text(p, QRectF(left, H - mm(12), mm(120), mm(6)), f"{APP_NAME} · {AUTHOR} · audit du {day}", f_h, "#8a96a6")
-        text(p, QRectF(W - right - mm(40), H - mm(12), mm(40), mm(6)), f"Page {i + 2} / {n_pages}", font(7.5, QFont.DemiBold),
+        p.drawLine(QPointF(left, H - mm(10)), QPointF(W - right, H - mm(10)))
+        text(p, QRectF(left, H - mm(9), mm(120), mm(6)), f"{APP_NAME} · {AUTHOR} · audit du {day}", f_h, "#8a96a6")
+        text(p, QRectF(W - right - mm(40), H - mm(9), mm(40), mm(6)), f"Page {i + 2} / {n_pages}", font(7.5, QFont.DemiBold),
              MUTED, Qt.AlignRight | Qt.AlignVCenter)
         # corps
         p.save()
