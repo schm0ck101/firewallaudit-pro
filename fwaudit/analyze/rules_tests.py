@@ -81,6 +81,10 @@ def egress(c: Ctx):
     if e.get("error"):
         c.nc("test.egress", TEST, "Filtrage sortant réel", e["error"])
         return
+    if e.get("proxied"):
+        c.add("test.egress.proxy", TEST, INFO, "Trafic sortant analysé par un proxy",
+              "Le serveur de test est joignable mais ses réponses sont modifiées (proxy web transparent ou déchiffrement SSL) : "
+              "le critère retenu pour chaque port est l'aboutissement de la connexion.", "", "")
     other_path = _path_mismatch(c)
     if other_path:
         c.add("test.path", TEST, MAJOR, "Le trafic du réseau d'audit ne sort pas par ce pare-feu",
@@ -190,6 +194,12 @@ def segmentation(c: Ctx):
         else:
             c.add(f"test.seg.{net}", TEST, INFO, f"Réseau {net} : {reach} appareil(s) joignable(s) depuis le réseau d'audit", line,
                   "", "", sens[:20])
+        ip_ = r.get("intercepted_ports") or []
+        if ip_:
+            c.add(f"test.seg.proxy.{net}", TEST, INFO,
+                  f"Ports {', '.join(map(str, ip_))} interceptés par le pare-feu sur {net}",
+                  "Ces ports répondent même sur des adresses inutilisées : le pare-feu (proxy transparent DNS / web) répond "
+                  "à la place des appareils. Ils ont été écartés du décompte des appareils joignables.", "", "")
         gp = r.get("gateway_ports") or []
         if gp:
             c.add(f"test.seg.gw.{net}", TEST, INFO, f"Interface du pare-feu {r.get('gateway')} : ports {', '.join(map(str, gp))} ouverts", "")

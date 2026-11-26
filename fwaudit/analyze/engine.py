@@ -108,7 +108,7 @@ def analyze(snapshot: dict, prev_snapshot: dict | None = None) -> Analysis:
     for r in c.cfg.rules:
         view.append({"id": r.id, "pos": r.position, "name": r.name, "enabled": r.enabled, "action": r.action, "layer": r.layer,
                      "src_zones": r.src_zones, "dst_zones": r.dst_zones, "src": r.src_set.describe(3), "dst": r.dst_set.describe(3),
-                     "svc": r.svc_set.describe(4), "src_names": r.src_names, "dst_names": r.dst_names, "svc_names": r.svc_names,
+                     "svc": r.svc_set.describe(4), "conds": list(r.apps) + list(r.users), "src_names": r.src_names, "dst_names": r.dst_names, "svc_names": r.svc_names,
                      "conditions": r.users + r.apps + ([r.schedule] if r.schedule else []), "log": r.log, "profiles": r.profiles,
                      "hits": r.hits, "comment": r.comment, "flags": by_rule.get(str(r.id), []), "raw": (r.raw or "")[:1500]})
     cfg = c.cfg

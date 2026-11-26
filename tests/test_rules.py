@@ -252,3 +252,40 @@ def test_watchguard_real_structure():
     assert eg.severity == MINOR and "#4" in eg.detail                                  # prévu par le proxy SMTP, inspecté
     adm = next(f for f in a.findings if f.id.startswith("expo.admin.") and "#7" in f.title)
     assert "192.168." not in adm.title                                                # seules les sources publiques sont citées
+
+
+def test_probes_proxy_and_interception(monkeypatch):
+    """Pare-feu qui répond à la place des appareils (proxy DNS transparent) et serveur de test vu à travers un proxy."""
+    from fwaudit.scan import probes
+
+    class R:
+        def __init__(self, ok):
+            self.reached = ok
+    alive = {"192.168.20.10", "192.168.20.11", "192.168.20.12"}
+    monkeypatch.setattr(probes.icmp, "probe", lambda h, timeout_ms=0: R(h in alive))
+
+    def scan(hosts, plist, timeout=0, workers=0, cancel=None):
+        out = {}
+        for h in hosts:
+            ps = [53] if 53 in plist else []                 # le pare-feu « ouvre » 53 partout
+            if h == "192.168.20.10" and 445 in plist:
+                ps.append(445)
+            out[h] = ps
+        return out
+    monkeypatch.setattr(probes.ports, "scan", scan)
+    res = probes.segmentation([{"name": "invites", "network": "192.168.20.0/24", "role": "guest", "gateway": "192.168.20.1"}], [])
+    r = res["192.168.20.0/24"]
+    assert r["intercepted_ports"] == [53]
+    assert r["hosts"]["192.168.20.10"]["ports"] == [445] and r["hosts"]["192.168.20.11"]["ports"] == []
+    a = analyze({"config": {"vendor": "X", "rules": [], "interfaces": []}, "meta": {}, "tests": {"segmentation": res}})
+    assert [f for f in a.findings if f.id.startswith("test.seg.proxy.")]
+
+    monkeypatch.setattr(probes.socket, "gethostbyname", lambda h: "203.0.113.9")
+    monkeypatch.setattr(probes, "_probe_port", lambda host, ip, port, expect, timeout=4.0:
+                        "intercepted" if port in (80, 443) else "closed")
+    monkeypatch.setattr(probes.dnsmsg, "query", lambda *a, **k: {"ok": False})
+    monkeypatch.setattr(probes.tests, "tcp_connect_ms", lambda *a, **k: None)
+    monkeypatch.setattr(probes.tests, "sntp_offset", lambda *a, **k: {"ok": False})
+    monkeypatch.setattr(probes.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    e = probes.egress()
+    assert not e.get("error") and e.get("proxied") and e["tcp"]["443"]["open"] and not e["tcp"]["22"]["open"]

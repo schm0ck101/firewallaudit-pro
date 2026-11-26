@@ -74,18 +74,32 @@ def _probe_port(host: str, ip: str, port: int, expect: bytes, timeout: float = 4
 
 def egress(cancel: threading.Event | None = None, progress=None) -> dict:
     out: dict = {"tcp": {}, "dns_direct": {}, "dot": None, "doh": None, "ntp": None, "icmp": None}
+    fallback = None
     for host, expect in ECHO_SERVERS:
         try:
             ip = socket.gethostbyname(host)
         except OSError:
             continue
-        # le serveur de test répond-il (port très courant) ?
-        if _probe_port(host, ip, 443, expect) == "open" or _probe_port(host, ip, 8080, expect) == "open":
+        # le serveur de test répond-il sur un port très courant ? (80 / 443 / 8080)
+        states = []
+        for p0 in (80, 443, 8080):
+            st = _probe_port(host, ip, p0, expect)
+            states.append(st)
+            if st == "open":
+                break
+        if "open" in states:
             out["target"], out["target_ip"] = host, ip
             break
+        if "intercepted" in states and not fallback:
+            fallback = (host, ip)             # joignable, mais réponses modifiées (proxy web, déchiffrement SSL)
     else:
-        out["error"] = "Aucun serveur de test des ports sortants joignable (Internet coupé, ou HTTPS/8080 sortants bloqués)."
-        return out
+        if fallback:
+            out["target"], out["target_ip"] = fallback
+            out["proxied"] = True
+        else:
+            out["error"] = ("Aucun serveur de test des ports sortants joignable (Internet coupé, résolution DNS impossible, "
+                            "ou ports 80/443/8080 sortants bloqués).")
+            return out
 
     def one(p):
         if cancel and cancel.is_set():
@@ -162,11 +176,22 @@ def segmentation(targets: list[dict], local_nets: list[str], cancel: threading.E
             sc = ports.scan(sorted(alive), SEG_PORTS, timeout=0.8, workers=256, cancel=cancel)
             for h, ps in sc.items():
                 alive[h]["ports"] = ps
+        intercepted: list[int] = []
+        dead = [h for h in reversed(hosts) if h not in alive and h != t.get("gateway")][:3]
+        if alive and dead and not (cancel and cancel.is_set()):
+            canary = ports.scan(dead, SEG_PORTS, timeout=0.8, workers=64, cancel=cancel)
+            intercepted = sorted({pt for ps in canary.values() for pt in ps})
+        if intercepted:
+            for h in list(alive):
+                alive[h]["ports"] = [pt for pt in alive[h]["ports"] if pt not in intercepted]
+                if not alive[h]["ports"] and not alive[h]["icmp"]:
+                    alive.pop(h)
         gw = t.get("gateway") or ""
         alive.pop(gw, None)                 # l'interface du pare-feu est rapportée à part
         gw_ports = ports.scan([gw], [22, 23, 80, 443, 8443, 4444, 10443, 8291, 161], 0.8)[gw] if gw else []
         res[t["network"]] = {"name": t.get("name", ""), "role": t.get("role", ""), "scanned": len(hosts),
-                             "reachable": len(alive), "hosts": alive, "gateway": gw, "gateway_ports": gw_ports}
+                             "reachable": len(alive), "hosts": alive, "gateway": gw, "gateway_ports": gw_ports,
+                             "intercepted_ports": intercepted}
     return res
 
 
