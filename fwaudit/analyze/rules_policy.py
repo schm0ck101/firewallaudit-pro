@@ -82,6 +82,8 @@ def inbound_sensitive(c: Ctx):
             continue
         open_src = r.src_set.is_any or r.src_set.size > 2**16
         sev = CRIT if open_src and any(s >= 4 for _p, _l, s in hits) else MAJOR if open_src else MINOR
+        if open_src and any(a.startswith("géolocalisation") for a in r.apps):
+            sev = MAJOR if sev == CRIT else sev        # ouvert, mais limité à certains pays
         names = ", ".join(sorted({lab for _p, lab, _s in hits}))
         c.add(f"pol.inbound.{r.id}", POL, sev, f"Accès depuis Internet à {names} : {r.label()}",
               c.describe(r) + ("" if open_src else " (sources restreintes)"),
@@ -211,7 +213,7 @@ def logging_and_profiles(c: Ctx):
     if c.is_windows:
         return
     nolog = [r for r in c.active if r.action == ALLOW and c.from_wan(r) and r.log is False and not c.is_return(r)
-             and not c.is_default(r)]
+             and not c.is_default(r) and not c.roles(r.dst_zones) <= {VPN}]
     if nolog:
         c.add("pol.nolog", POL, MINOR, f"{len(nolog)} flux entrant(s) autorisé(s) sans journalisation",
               "", "En cas d'incident, impossible de savoir qui s'est connecté et quand.",

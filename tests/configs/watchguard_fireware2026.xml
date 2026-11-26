@@ -1,55 +1,108 @@
 <?xml version="1.0"?>
-<!-- Structure relevée sur un vrai Firebox (Fireware 2026.4, 57 politiques), anonymisée : proxys, alias « .snat »,
-     alias imbriqués, interfaces non configurées (0.0.0.0), lien externe non nommé « External », politiques système. -->
+<!-- Structure d'un vrai Firebox (Fireware 2026.4, config.xml de Policy Manager), anonymisée et réduite :
+     politiques enveloppées (« X.1.from » / « X.1.to »), firewall 4 = proxy, property 32 = politique système,
+     <nat> de la politique -> <nat-list>, alias « .snat », géolocalisation, interfaces VLAN (vif-property),
+     agrégat 0.0.0.0, interface BOVPN virtuelle, journalisation distante désactivée. -->
 <profile>
   <for-version>2026.4.0</for-version>
-  <system-parameters><device-conf><system-name>FBX-CLIENT</system-name></device-conf></system-parameters>
-  <interface-list>
-    <interface><name>OPERATEUR</name><if-property>2</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>203.0.113.77</ip><netmask>255.255.255.248</netmask></physical-if></item></if-item-list></interface>
-    <interface><name>LAN</name><if-property>1</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>192.168.1.1</ip><netmask>255.255.255.0</netmask></physical-if></item></if-item-list></interface>
-    <interface><name>AGGR-LAN</name><if-property>1</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>0.0.0.0</ip><netmask>0.0.0.0</netmask></physical-if></item></if-item-list></interface>
-    <interface><name>LA-1</name><if-property>0</if-property><if-item-list><item><physical-if><enabled>1</enabled><ip>0.0.0.0</ip><netmask>255.255.255.0</netmask></physical-if></item></if-item-list></interface>
-    <interface><name>vlan-invite</name><if-property>1</if-property><if-item-list><item><vlan-if><ip>192.168.2.254</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
-    <interface><name>VOIP</name><if-property>1</if-property><if-item-list><item><vlan-if><ip>192.168.200.254</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
-  </interface-list>
+  <account-list><account><id>prestataire.vpn</id><property>0</property><role-list><role>end user</role></role-list></account></account-list>
+  <system-parameters>
+    <log-conf><remote-logging><enabled>0</enabled><remote-logging-list><logging-entry><server-ip>0.0.0.0</server-ip></logging-entry></remote-logging-list></remote-logging></log-conf>
+    <common-logging><enabled>0</enabled></common-logging>
+    <snmp-conf><snmp-protocol><snmp-version>3</snmp-version></snmp-protocol></snmp-conf>
+    <ntp-conf><ntp-enabled>1</ntp-enabled></ntp-conf>
+    <device-conf><system-name>FBX-CLIENT</system-name></device-conf>
+  </system-parameters>
   <address-group-list>
-    <address-group><name>EVODE.1</name><addr-group-member><member><type>1</type><host-ip-addr>198.51.100.10</host-ip-addr></member></addr-group-member></address-group>
-    <address-group><name>VIP-FTP.1.snat</name><addr-group-member><member><type>1</type><host-ip-addr>192.168.1.20</host-ip-addr></member></addr-group-member></address-group>
+    <address-group><name>Firebox</name><property>4</property><addr-group-member><member><type>1</type><host-ip-addr>0.0.0.0</host-ip-addr></member></addr-group-member></address-group>
+    <address-group><name>PRESTA.1.alm</name><addr-group-member><member><type>1</type><host-ip-addr>198.51.100.10</host-ip-addr></member></addr-group-member></address-group>
+    <address-group><name>PRESTA_ADM.1.alm</name><addr-group-member><member><type>2</type><ip-network-addr>198.51.100.224</ip-network-addr><ip-mask>255.255.255.240</ip-mask></member></addr-group-member></address-group>
+    <address-group><name>VIP-FTP.1.snat</name><property>16</property><addr-group-member><member><type>1</type><host-ip-addr>192.168.1.15</host-ip-addr></member></addr-group-member></address-group>
+    <address-group><name>VIP-RDP.1.snat</name><property>16</property><addr-group-member><member><type>1</type><host-ip-addr>192.168.1.15</host-ip-addr></member></addr-group-member></address-group>
   </address-group-list>
-  <alias-list>
-    <alias><name>Any-External</name><alias-member-list><alias-member><interface>OPERATEUR</interface></alias-member></alias-member-list></alias>
-    <alias><name>Any-Trusted</name><alias-member-list><alias-member><interface>LAN</interface></alias-member><alias-member><interface>vlan-invite</interface></alias-member><alias-member><interface>VOIP</interface></alias-member></alias-member-list></alias>
-    <alias><name>EVODE</name><alias-member-list><alias-member><alias-name>EVODE-HOSTS</alias-name><interface>Any</interface></alias-member></alias-member-list></alias>
-    <alias><name>EVODE-HOSTS</name><alias-member-list><alias-member><address>EVODE.1</address><interface>Any</interface></alias-member></alias-member-list></alias>
-    <alias><name>VIP-FTP.snat</name><alias-member-list><alias-member><address>VIP-FTP.1.snat</address></alias-member></alias-member-list></alias>
-    <alias><name>VIP-RDP.snat</name><alias-member-list><alias-member><address>192.168.1.21</address></alias-member></alias-member-list></alias>
-    <alias><name>TUNNEL-SECOND</name><alias-member-list><alias-member><address>Any</address><interface>SECOND</interface></alias-member></alias-member-list></alias>
-  </alias-list>
   <service-list>
     <service><name>Any</name><service-item><member><type>1</type><protocol>0</protocol><server-port>0</server-port></member></service-item></service>
     <service><name>FTP</name><service-item><member><type>1</type><protocol>6</protocol><server-port>21</server-port></member></service-item></service>
     <service><name>SMTP-proxy</name><service-item><member><type>1</type><protocol>6</protocol><server-port>25</server-port></member><member><type>1</type><protocol>6</protocol><server-port>465</server-port></member></service-item></service>
-    <service><name>HTTP-proxy</name><service-item><member><type>1</type><protocol>6</protocol><server-port>80</server-port></member></service-item></service>
     <service><name>RDP</name><service-item><member><type>1</type><protocol>6</protocol><server-port>3389</server-port></member></service-item></service>
+    <service><name>WG-Firebox-Mgmt</name><service-item><member><type>1</type><protocol>6</protocol><server-port>4117</server-port></member></service-item></service>
     <service><name>IKE</name><service-item><member><type>1</type><protocol>17</protocol><server-port>500</server-port></member><member><type>1</type><protocol>17</protocol><server-port>4500</server-port></member></service-item></service>
   </service-list>
+  <nat-list>
+    <nat><name>VIP-FTP</name><property>0</property><type>7</type><nat-item><member><addr-type>4</addr-type><port>0</port><ext-addr-name>Firebox</ext-addr-name><interface>Any-External</interface><addr-name>VIP-FTP.1.snat</addr-name></member></nat-item></nat>
+    <nat><name>VIP-RDP</name><property>0</property><type>7</type><nat-item><member><addr-type>4</addr-type><port>3389</port><ext-addr-name>Firebox</ext-addr-name><interface>Any-External</interface><addr-name>VIP-RDP.1.snat</addr-name></member></nat-item></nat>
+  </nat-list>
+  <ike-action-list>
+    <ike-action><name>SECOND_bo</name><mode>0</mode><ike-transform><member><dh-group>14</dh-group><encryp-algm>7</encryp-algm><encryp-key-len>32</encryp-key-len><auth-algm>4</auth-algm></member></ike-transform></ike-action>
+  </ike-action-list>
+  <ike-policy-list>
+    <ike-policy><name>SITE-SECOND</name><version>2</version><enabled>1</enabled><peer-addr>203.0.113.66</peer-addr><ike-action>SECOND_bo</ike-action></ike-policy>
+  </ike-policy-list>
+  <ike-policy-group-list><ike-policy-group><member-list><member><ike-policy>SITE-SECOND</ike-policy></member></member-list></ike-policy-group></ike-policy-group-list>
   <policy-list>
-    <policy><name>Allow-IKE-to-Firebox</name><service>IKE</service><firewall>1</firewall><enable>1</enable><log>0</log>
-      <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>Firebox</alias></to-alias-list></policy>
-    <policy><name>Any From Firebox-00</name><service>Any</service><firewall>1</firewall><enable>1</enable><log>0</log>
-      <from-alias-list><alias>Firebox</alias></from-alias-list><to-alias-list><alias>Any</alias></to-alias-list></policy>
-    <policy><name>FTP-00</name><service>FTP</service><firewall>1</firewall><enable>1</enable><log>1</log>
-      <from-alias-list><alias>Any-External</alias></from-alias-list><to-alias-list><alias>VIP-FTP.snat</alias></to-alias-list></policy>
-    <policy><name>SMTP-proxy Sortant-00</name><service>SMTP-proxy</service><firewall>3</firewall><proxy>SMTP-Outgoing.Standard</proxy><enable>1</enable><log>1</log>
-      <from-alias-list><alias>Any-Trusted</alias></from-alias-list><to-alias-list><alias>Any-External</alias></to-alias-list></policy>
-    <policy><name>HTTP-proxy de base-00</name><service>HTTP-proxy</service><firewall>3</firewall><enable>1</enable><log>1</log>
-      <from-alias-list><alias>Any-Trusted</alias></from-alias-list><to-alias-list><alias>Any-External</alias></to-alias-list></policy>
-    <policy><name>EVODE-RDP-00</name><service>RDP</service><firewall>1</firewall><enable>1</enable><log>1</log>
-      <from-alias-list><alias>EVODE</alias></from-alias-list><to-alias-list><alias>VIP-RDP.snat</alias></to-alias-list></policy>
-    <policy><name>BOVPN-Allow.out-00</name><service>Any</service><firewall>1</firewall><enable>1</enable><log>1</log>
-      <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>TUNNEL-SECOND</alias></to-alias-list></policy>
-    <policy><name>Unhandled External Packet-00</name><service>Any</service><firewall>2</firewall><enable>1</enable><log>1</log>
-      <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>Any</alias></to-alias-list></policy>
+    <policy><name>Allow-IKE-to-Firebox</name><property>32</property><service>IKE</service><firewall>1</firewall><enable>1</enable><log>0</log><nat/><geo-action>Global</geo-action>
+      <from-alias-list><alias>Allow-IKE-to-Firebox.1.from</alias></from-alias-list><to-alias-list><alias>Allow-IKE-to-Firebox.1.to</alias></to-alias-list></policy>
+    <policy><name>Any From Firebox-00</name><property>32</property><service>Any</service><firewall>1</firewall><enable>1</enable><log>0</log><nat/><geo-action>Global</geo-action>
+      <from-alias-list><alias>Any From Firebox.1.from</alias></from-alias-list><to-alias-list><alias>Any From Firebox.1.to</alias></to-alias-list></policy>
+    <policy><name>FTP-00</name><property>0</property><service>FTP</service><firewall>1</firewall><enable>1</enable><log>1</log><nat>VIP-FTP</nat><geo-action>RESTRICTION_FRANCE</geo-action><ips-monitor-enabled>1</ips-monitor-enabled>
+      <from-alias-list><alias>FTP.1.from</alias></from-alias-list><to-alias-list><alias>FTP.1.to</alias></to-alias-list></policy>
+    <policy><name>SMTP-proxy Sortant-00</name><property>0</property><service>SMTP-proxy</service><firewall>4</firewall><proxy>SMTP-Sortant</proxy><enable>1</enable><log>0</log><nat/><geo-action>Global</geo-action><app-action>Controle de base</app-action><ips-monitor-enabled>1</ips-monitor-enabled>
+      <from-alias-list><alias>SMTP-proxy Sortant.1.from</alias></from-alias-list><to-alias-list><alias>SMTP-proxy Sortant.1.to</alias></to-alias-list></policy>
+    <policy><name>RDP-PRESTA-00</name><property>0</property><service>RDP</service><firewall>1</firewall><enable>1</enable><log>1</log><nat>VIP-RDP</nat><geo-action>Global</geo-action>
+      <from-alias-list><alias>RDP-PRESTA.1.from</alias></from-alias-list><to-alias-list><alias>RDP-PRESTA.1.to</alias></to-alias-list></policy>
+    <policy><name>WatchGuard-00</name><property>0</property><service>WG-Firebox-Mgmt</service><firewall>1</firewall><enable>1</enable><log>0</log><nat/><geo-action>Global</geo-action>
+      <from-alias-list><alias>WatchGuard.1.from</alias></from-alias-list><to-alias-list><alias>WatchGuard.1.to</alias></to-alias-list></policy>
+    <policy><name>WG-Firebox-Mgmt-00</name><property>0</property><service>WG-Firebox-Mgmt</service><firewall>1</firewall><enable>1</enable><log>0</log><nat/><geo-action>RESTRICTION_FRANCE</geo-action>
+      <from-alias-list><alias>WG-Firebox-Mgmt.1.from</alias><alias>WG-Firebox-Mgmt.2.from</alias></from-alias-list><to-alias-list><alias>WG-Firebox-Mgmt.1.to</alias></to-alias-list></policy>
+    <policy><name>BOVPN-Allow.out-00</name><property>0</property><service>Any</service><firewall>1</firewall><enable>1</enable><log>1</log><nat/><geo-action>Global</geo-action>
+      <from-alias-list><alias>BOVPN-Allow.out.1.from</alias></from-alias-list><to-alias-list><alias>BOVPN-Allow.out.1.to</alias></to-alias-list></policy>
+    <policy><name>Unhandled External Packet-00</name><property>32</property><service>Any</service><firewall>2</firewall><enable>1</enable><log>0</log><nat/><geo-action>Global</geo-action>
+      <from-alias-list><alias>Unhandled External Packet.1.from</alias></from-alias-list><to-alias-list><alias>Unhandled External Packet.1.to</alias></to-alias-list></policy>
   </policy-list>
-  <tunnel-list><tunnel><name>SECOND</name><gateway-name>GW-SECOND</gateway-name></tunnel></tunnel-list>
+  <alias-list>
+    <alias><name>Any</name><property>4</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Any</address><interface>Any</interface></alias-member></alias-member-list></alias>
+    <alias><name>Any-External</name><property>4</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Any</address><interface>Any-External</interface></alias-member></alias-member-list></alias>
+    <alias><name>Any-Trusted</name><property>4</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Any</address><interface>Any-Trusted</interface></alias-member></alias-member-list></alias>
+    <alias><name>Firebox</name><property>4</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Firebox</address><interface>Any</interface></alias-member></alias-member-list></alias>
+    <alias><name>PRESTA</name><property>0</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>PRESTA.1.alm</address><interface>Any</interface></alias-member></alias-member-list></alias>
+    <alias><name>PRESTA_ADM</name><property>0</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>PRESTA_ADM.1.alm</address><interface>Any</interface></alias-member></alias-member-list></alias>
+    <alias><name>VIP-FTP.snat</name><property>32</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Firebox</address><interface>Any-External</interface></alias-member></alias-member-list></alias>
+    <alias><name>VIP-RDP.snat</name><property>32</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Firebox</address><interface>Any-External</interface></alias-member></alias-member-list></alias>
+    <alias><name>Allow-IKE-to-Firebox.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>Allow-IKE-to-Firebox.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Firebox</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>Any From Firebox.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Firebox</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>Any From Firebox.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>FTP.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any-External</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>FTP.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>VIP-FTP.snat</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>SMTP-proxy Sortant.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any-Trusted</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>SMTP-proxy Sortant.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any-External</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>RDP-PRESTA.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>PRESTA</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>RDP-PRESTA.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>VIP-RDP.snat</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>WatchGuard.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any-Trusted</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>WatchGuard.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Firebox</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>WG-Firebox-Mgmt.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any-Trusted</alias-name></alias-member><alias-member><type>2</type><alias-name>PRESTA_ADM</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>WG-Firebox-Mgmt.2.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any-Trusted</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>WG-Firebox-Mgmt.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Firebox</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>BOVPN-Allow.out.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>BOVPN-Allow.out.1.to</name><property>16</property><alias-member-list><alias-member><type>1</type><user>Any</user><address>Any</address><interface>TUNNEL-SECOND</interface></alias-member></alias-member-list></alias>
+    <alias><name>Unhandled External Packet.1.from</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any</alias-name></alias-member></alias-member-list></alias>
+    <alias><name>Unhandled External Packet.1.to</name><property>16</property><alias-member-list><alias-member><type>2</type><alias-name>Any</alias-name></alias-member></alias-member-list></alias>
+  </alias-list>
+  <interface-list>
+    <interface><name>Any-External</name><property>4</property></interface>
+    <interface><name>Any-Trusted</name><property>4</property></interface>
+    <interface><name>SSL-VPN</name><property>2</property><if-item-list><item><item-type>5</item-type></item></if-item-list></interface>
+    <interface><name>AGGR-LAN</name><property>0</property><if-item-list><item><item-type>9</item-type><physical-if><enabled>1</enabled><if-property>5</if-property><ip>0.0.0.0</ip><netmask>0.0.0.0</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>LA-1</name><property>0</property><if-item-list><item><item-type>1</item-type><physical-if><enabled>1</enabled><if-property>7</if-property><ip>0.0.0.0</ip><netmask>255.255.255.0</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>OPERATEUR</name><property>0</property><if-item-list><item><item-type>1</item-type><physical-if><enabled>1</enabled><if-property>2</if-property><ip>203.0.113.77</ip><netmask>255.255.255.248</netmask><secondary-ip-list><secondary-ip><ip>203.0.113.76</ip><netmask>255.255.255.248</netmask></secondary-ip></secondary-ip-list></physical-if></item></if-item-list></interface>
+    <interface><name>LAN</name><property>0</property><if-item-list><item><item-type>2</item-type><vlan-if><vlan-id>1</vlan-id><vif-property>1</vif-property><ip>192.168.1.1</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
+    <interface><name>VOIP</name><property>0</property><if-item-list><item><item-type>2</item-type><vlan-if><vlan-id>200</vlan-id><vif-property>1</vif-property><ip>192.168.200.254</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
+    <interface><name>vlan-invite</name><property>0</property><if-item-list><item><item-type>2</item-type><vlan-if><vlan-id>2</vlan-id><vif-property>1</vif-property><ip>192.168.2.1</ip><netmask>255.255.255.0</netmask></vlan-if></item></if-item-list></interface>
+    <interface><name>Optional-2</name><property>0</property><if-item-list><item><item-type>1</item-type><physical-if><enabled>0</enabled><if-property>3</if-property><ip>0.0.0.0</ip><netmask>255.255.255.0</netmask></physical-if></item></if-item-list></interface>
+    <interface><name>TUNNEL-SECOND</name><property>0</property><if-item-list><item><item-type>4</item-type></item></if-item-list></interface>
+  </interface-list>
+  <geolocation-blocking><enabled>1</enabled><geo-action-list>
+    <geo-action><name>Global</name><property>4</property><geo-list/></geo-action>
+    <geo-action><name>RESTRICTION_FRANCE</name><property>4</property><geo-list><geo>US</geo><geo>CN</geo></geo-list></geo-action>
+  </geo-action-list></geolocation-blocking>
 </profile>

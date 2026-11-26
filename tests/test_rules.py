@@ -212,22 +212,29 @@ def test_partial_and_empty_inputs():
 
 
 def test_watchguard_real_structure():
-    """Structure relevée sur un vrai Firebox (Fireware 2026.4) : politiques proxy (laissent passer, avec inspection),
-    alias « .snat » = publications, alias imbriqués, interfaces non configurées, lien externe non nommé « External »."""
+    """Structure d'un vrai Firebox (Fireware 2026.4) : proxys (firewall 4) qui laissent passer, politiques système
+    (property 32), NAT porté par la politique, alias enveloppés et imbriqués, géolocalisation, VLAN, agrégat 0.0.0.0."""
     cfg = load.from_file(CFG / "watchguard_fireware2026.xml")[0]
     roles = {i.name: (i.role, i.ips) for i in cfg.interfaces}
-    assert roles["OPERATEUR"][0] == "wan" and roles["vlan-invite"][0] == "guest"
-    assert roles["AGGR-LAN"][1] == [] and roles["LA-1"][1] == []                   # 0.0.0.0 : pas de réseau « tout »
+    assert "Any-External" not in roles                                                # zones intégrées : pas des interfaces
+    assert roles["OPERATEUR"] == ("wan", ["203.0.113.77/29"]) and roles["vlan-invite"][0] == "guest"
+    assert roles["VOIP"][0] == "lan" and roles["TUNNEL-SECOND"][0] == "vpn"
+    assert roles["AGGR-LAN"][1] == [] and roles["LA-1"][1] == []                     # 0.0.0.0 : pas de réseau « tout »
     by = {r.name: r for r in cfg.rules}
-    assert by["SMTP-proxy Sortant-00"].action == "allow" and by["HTTP-proxy de base-00"].profiles
-    assert by["Unhandled External Packet-00"].action == "deny"
+    assert by["SMTP-proxy Sortant-00"].action == "allow" and "IPS" in by["SMTP-proxy Sortant-00"].profiles
+    assert by["Unhandled External Packet-00"].action == "deny" and by["Any From Firebox-00"].comment == "prédéfinie"
+    assert by["WatchGuard-00"].layer == "input"
     nat = {n.id: n for n in cfg.nat}
-    assert nat["VIP-FTP.snat"].int_ip == "192.168.1.20" and nat["VIP-RDP.snat"].src_restrict == ["198.51.100.10"]
-    assert "198.51.100.10" in by["EVODE-RDP-00"].src_set.describe()                # alias imbriqué résolu
-    tests = {"egress": {"tcp": {"25": {"open": True}, "80": {"open": True}}}}
-    a = run(cfg, tests)
+    assert nat["VIP-FTP"].int_ip == "192.168.1.15" and "RESTRICTION_FRANCE" in nat["VIP-FTP"].src_restrict[0]
+    assert nat["VIP-RDP"].src_restrict == ["198.51.100.10"]                            # alias enveloppé + imbriqué résolu
+    v = cfg.vpn[0]
+    assert len(cfg.vpn) == 1 and v.ike == 2 and v.enc == ["AES-256"] and v.auth == ["SHA2-256"] and v.dh == [14]
+    assert cfg.services["log_remote"] is False and not cfg.services["snmp_communities"]
+    a = run(cfg, {"egress": {"tcp": {"25": {"open": True}, "80": {"open": True}}}})
     got = {f.id: f.severity for f in a.findings}
-    assert not [i for i in got if i.startswith("test.egress.mismatch")], got        # le proxy SMTP laisse passer : pas d'incohérence
-    assert got.get("pol.inbound.3") == MAJOR                                          # FTP publié depuis tout Internet
-    assert got.get("pol.wide.7") == MINOR                                             # tout autorisé dans le tunnel
-    assert not [i for i in got if i.endswith(".2")], got                              # « Any From Firebox » : politique système
+    assert not [i for i in got if i.startswith("test.egress.mismatch")], got        # le proxy SMTP laisse passer
+    assert got.get("pol.inbound.3") == MAJOR                                          # FTP ouvert (France seulement)
+    assert got.get("pol.wide.8") == MINOR                                             # tout autorisé dans le tunnel
+    assert not [i for i in got if i.endswith(".2") or i.startswith("pol.redundant")], got
+    assert [f for f in a.findings if f.id.startswith("expo.admin.") and "#7" in f.title and f.severity == MINOR]
+    assert got.get("sys.vpn.SITE-SECOND") == 0 and got.get("sys.log") == MINOR

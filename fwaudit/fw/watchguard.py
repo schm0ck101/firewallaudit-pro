@@ -1,10 +1,12 @@
-"""Lecteur WatchGuard Firebox (Fireware 12.x) : fichier de configuration XML
-de Policy Manager (File › Save › As File) ou sauvegarde XML de Fireware Web UI.
+"""Lecteur WatchGuard Firebox : fichier de configuration XML de Policy Manager
+(File › Save › As File) ou sauvegarde XML de Fireware Web UI.
 
-Structure lue (tolérante aux variantes de version) : interfaces, alias,
-groupes d'adresses, services, politiques (ordre d'évaluation = ordre du
-fichier), NAT statique (SNAT) utilisé par les politiques.
-Lecteur À VALIDER sur de vraies configurations.
+Validé sur un vrai config.xml (Fireware 2026.4, 57 politiques) : politiques
+(ordre du fichier ; firewall 1 = autorisée, 2 = refusée, 4 = proxy ; property
+32 = politique système), alias enveloppés « X.1.from / X.1.to » et imbriqués,
+NAT statique porté par la politique (<nat>), géolocalisation, interfaces
+physiques / VLAN / BOVPN, VPN IKE (<ike-policy> + <ike-action>), journaux
+distants (syslog, serveur de journaux WatchGuard).
 """
 from __future__ import annotations
 
@@ -39,39 +41,41 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
     cfg.model = _t(root, ".//base-model") or _t(root, ".//model")
     cfg.version = _t(root, ".//for-version") or _t(root, ".//version")
 
-    # interfaces. Le type (External / Trusted / Optional) se lit de façon fiable dans les alias système
-    # Any-External / Any-Trusted / Any-Optional (leurs membres = les interfaces de ce type) ; les codes numériques
-    # de <if-property> varient selon les versions, on ne s'y fie que sous forme textuelle.
+    # interfaces (relevé sur Fireware 2026.4) : <interface-list>/<interface> ; property 4 = zones intégrées (Any,
+    # Any-External…) ; type par <if-property> (interface physique) ou <vif-property> (VLAN) : 1 Trusted, 2 External,
+    # 3 Optional, 7 membre d'agrégat ; item-type 4 = interface virtuelle BOVPN, 5 = SSL-VPN.
     import ipaddress
-    sys_alias: dict[str, str] = {}
-    for a in root.iter("alias"):
-        an = _t(a, "name")
-        role = {"Any-External": WAN, "Any-Trusted": LAN, "Any-Optional": "dmz"}.get(an)
-        if role:
-            for m in a.iter("alias-member"):
-                itf_name = _t(m, "interface")
-                if itf_name and itf_name.lower() != "any":
-                    sys_alias[itf_name] = role
-    for itf in root.iter("interface"):
+    il = root.find("interface-list")
+    kind_nets: dict[str, AddrSet] = {}           # réseaux par type d'interface (Any-Trusted / Any-Optional)
+    for itf in (il.findall("interface") if il is not None else root.iter("interface")):
         name = _t(itf, "name")
-        if not name:
+        if not name or _t(itf, "property") == "4":
             continue
         ips = []
-        for ipel in itf.iter("ip"):
+        for holder in itf.iter():
+            ipel = holder.find("ip")
+            if ipel is None or holder.tag == "secondary-ip":
+                continue
             ip = (ipel.text or "").strip()
-            if not ip or ip.startswith("0.") or ip == "0.0.0.0":
+            if not ip or ip.startswith("0."):
                 continue                       # interface non configurée
-            par = next((x for x in itf.iter() if ipel in list(x)), None)
-            mask = _t(par, "netmask") if par is not None else ""
+            mask = _t(holder, "netmask")
             try:
                 ips.append(str(ipaddress.IPv4Interface(f"{ip}/{mask}" if mask else ip)))
             except ValueError:
                 continue
-        typ = (_t(itf, ".//if-property") or _t(itf, ".//interface-type") or _t(itf, ".//if-type")).lower()
+        typ = (_t(itf, ".//if-property") or _t(itf, ".//vif-property") or _t(itf, ".//interface-type")).lower()
+        itype = _t(itf, ".//item-type")
         named = guess_role(name)
-        role = sys_alias.get(name)
-        if role is None:
-            role = WAN if typ == "external" else LAN if typ == "trusted" else "dmz" if typ == "optional" else None
+        role = {"external": WAN, "2": WAN, "trusted": LAN, "1": LAN, "optional": "dmz", "3": "dmz"}.get(typ)
+        kind = {"trusted": "Any-Trusted", "1": "Any-Trusted", "optional": "Any-Optional", "3": "Any-Optional"}.get(typ)
+        if kind and itype not in ("4", "5"):
+            for c in ips:
+                r0 = parse_addr(str(ipaddress.IPv4Interface(c).network))
+                if r0:
+                    kind_nets[kind] = kind_nets.get(kind, AddrSet()).union(AddrSet([r0]))
+        if itype in ("4", "5"):
+            role = "vpn"
         if role is None:
             pub = False
             for c in ips:
@@ -123,6 +127,10 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
         aliases[name] = mem
 
     def resolve(alias: str, depth=0) -> tuple[AddrSet, list[str]]:
+        if alias == "Firebox":
+            return AddrSet(opaque=frozenset(["Firebox"])), ["Firebox"]
+        if alias in kind_nets:                 # zone interne : ses réseaux réels (plus précis que « tout »)
+            return kind_nets[alias], [alias]
         if alias in ("Any", "Any-External", "Any-Trusted", "Any-Optional") or alias.lower() == "any":
             return AddrSet.any(), [alias] if alias != "Any" else []
         if depth > 8:
@@ -130,17 +138,21 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
         if alias in agroups:
             return agroups[alias], []
         if alias in aliases:
-            s, zones = AddrSet(), []
+            s, zones, zoneless = AddrSet(), [], False
             for addr, itf in aliases[alias]:
+                before = len(zones)
                 if addr and addr.lower() not in ("any", ""):
                     a2, z2 = resolve(addr, depth + 1)
                     s = s.union(a2)
-                    zones += z2
+                    zones += z2 + ([itf] if itf and itf.lower() != "any" and addr != "Firebox" else [])
                 elif itf and itf.lower() != "any":
                     zones.append(itf)
                     s = s.union(AddrSet.any())
                 else:
                     s = s.union(AddrSet.any())
+                zoneless = zoneless or len(zones) == before
+            if zones and zoneless:
+                zones.append("Any")            # des adresses sans zone (ex. IP publique d'un prestataire) : toutes zones
             return s, zones
         r = parse_addr(alias)
         return (AddrSet([r]) if r else AddrSet(opaque=frozenset([alias]))), []
@@ -165,14 +177,26 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
             else:
                 ss.add(p)
         services[name] = ss
+    # NAT statique : <nat-list>/<nat> ; membre addr-name = groupe d'adresses interne (« NOM.1.snat »)
     snat: dict[str, tuple[str, str, str]] = {}
-    for n in root.iter("nat"):
+    nl = root.find("nat-list")
+    for n in (nl.findall("nat") if nl is not None else []):
         name = _t(n, "name")
-        ext = _t(n, ".//ext-addr-name") or _t(n, ".//external-ip") or _t(n, ".//addr-name")
-        intip = _t(n, ".//real-host") or _t(n, ".//internal-ip") or _t(n, ".//dst-host")
-        port = _t(n, ".//port")
-        if name:
-            snat[name] = (ext, intip, port)
+        if not name:
+            continue
+        ints, ports, ext = [], [], ""
+        for m in n.iter("member"):
+            ext = ext or _t(m, "ext-addr-name") or _t(m, "interface")
+            an = _t(m, "addr-name") or _t(m, "real-host")
+            if an:
+                grp = agroups.get(an)
+                ints.append(grp.describe(2) if grp is not None else an)
+            if _t(m, "port") not in ("", "0"):
+                ports.append(_t(m, "port"))
+        snat[name] = (ext if ext not in ("Firebox", "Any-External") else "", ", ".join(ints), ", ".join(ports))
+    # géolocalisation : actions autres que l'action système « Global » = restriction des pays autorisés
+    geo_restrict = {_t(g, "name") for g in root.iter("geo-action") if _t(g, "name") and _t(g, "name") != "Global"
+                    and g.find("geo-list") is not None and len(g.find("geo-list"))}
 
     pos = 0
     for p in root.iter("policy"):
@@ -191,8 +215,11 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
             r.action = ALLOW                   # politique proxy : le trafic passe, analysé par le proxy
         else:
             r.action = DENY
-        if _DEFAULT_RE.match(name):
-            r.comment = "prédéfinie"
+        if _t(p, "property") == "32" or _DEFAULT_RE.match(name):
+            r.comment = "prédéfinie"           # politique créée par Fireware
+        geo = _t(p, "geo-action")
+        if geo in geo_restrict:
+            r.apps = [f"géolocalisation : {geo}"]
         frm = [(x.text or "").strip() for x in p.findall("from-alias-list/alias")]
         to = [(x.text or "").strip() for x in p.findall("to-alias-list/alias")]
         sa, sz = AddrSet(), []
@@ -201,7 +228,14 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
             sa, sz = sa.union(s2), sz + z2
         da, dz = AddrSet(), []
         nat_used = []
-        for a in to or ["Any"]:
+        pol_nat = _t(p, "nat")
+        if pol_nat in snat:
+            nat_used.append(pol_nat)
+            ext, intip, port = snat[pol_nat]
+            r2 = parse_addr(intip)
+            da = AddrSet([r2]) if r2 else AddrSet(opaque=frozenset([intip or pol_nat]))
+            dz.append("publication (NAT)")
+        for a in [] if pol_nat in snat else (to or ["Any"]):
             key = a[:-5] if a.lower().endswith(".snat") and a[:-5] in snat else a
             if key not in snat and a.lower().endswith(".snat"):
                 s2, _z = resolve(a)            # alias « .snat » sans objet NAT lisible : publication quand même
@@ -218,7 +252,7 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
             s2, z2 = resolve(a)
             da, dz = da.union(s2), dz + z2
         r.src_zones, r.dst_zones = sorted(set(sz)), sorted(set(dz))
-        if any(a == "Firebox" for a in to):                # le pare-feu lui-même
+        if not nat_used and (any(a == "Firebox" for a in to) or "Firebox" in dz):   # le pare-feu lui-même
             r.layer = "input"
             r.dst_zones = ["Firebox"]
             da = AddrSet(opaque=frozenset(["Firebox"]))
@@ -229,6 +263,10 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
         r.set_svc(services.get(svc_name, SvcSet.any() if svc_name in ("", "Any") else SvcSet(opaque=frozenset([svc_name]))))
         r.log = _t(p, "log", "0") in ("1", "true")
         r.profiles = [f"proxy:{prox or svc_name}"] if proxied and r.action == ALLOW else []
+        if _t(p, "ips-monitor-enabled") == "1":
+            r.profiles.append("IPS")
+        if _t(p, "app-action") not in ("", "None", "Global"):
+            r.profiles.append("contrôle applicatif")
         for tag, lab in (("ips", "IPS"), ("app-control", "contrôle applicatif"), ("webblocker", "WebBlocker"),
                          ("gateway-av", "antivirus")):
             v = _t(p, f".//{tag}") or _t(p, f".//{tag}-enabled")
@@ -240,30 +278,60 @@ def to_model(raw: bytes, source: str = "") -> FwConfig:
             r.nat = True
             for a in nat_used:
                 ext, intip, port = snat[a]
-                cfg.nat.append(Nat(id=a, name=f"{name} ({a})", ext_ip=ext, ext_ports=port or ", ".join(
-                    f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi in r.svc_set.ports(6)[:6]), int_ip=intip,
-                    src_restrict=[] if sa.is_any else [sa.describe(3)], enabled=r.enabled))
+                cfg.nat.append(Nat(id=a, name=f"{name} ({a})", ext_ip=ext, ext_ports=", ".join(
+                    f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi in (r.svc_set.ports(6) or r.svc_set.ports(17))[:6]) or port,
+                    proto="tcp" if r.svc_set.ports(6) else "udp", int_ip=intip, int_port=port,
+                    src_restrict=([] if sa.is_any else [sa.describe(3)]) + [a.replace("géolocalisation : ", "pays autorisés : ") for a in r.apps],
+                    enabled=r.enabled))
         r.raw = ET.tostring(p, encoding="unicode")[:1200]
         cfg.rules.append(r)
     for u in root.iter("user"):
         nm = _t(u, "name")
         if nm and (_t(u, "role") or _t(u, "access-level")):
             cfg.admins.append(Admin(name=nm, profile=_t(u, "role") or _t(u, "access-level"), default_name=nm == "admin"))
-    for g in root.iter("ike-policy"):
-        cfg.vpn.append(VpnTunnel(name=_t(g, "name") or "BOVPN", kind="ipsec", ike=_ike_version(_t(g, "version") or _t(g, "ike-version")),
-                                 enc=[x.text for x in g.iter("encryption-algorithm") if x.text],
-                                 auth=[x.text for x in g.iter("authentication-algorithm") if x.text],
-                                 dh=[int(x.text) for x in g.iter("dh-group") if (x.text or "").isdigit()]))
+    # VPN site à site : <ike-policy-list>/<ike-policy> -> <ike-action> (transformations de phase 1)
+    actions = {_t(x, "name"): x for x in root.iter("ike-action")}
+    ipl = root.find("ike-policy-list")
+    for g in (ipl.findall("ike-policy") if ipl is not None else []):
+        if not _t(g, "name") or _t(g, "enabled", "1") == "0":
+            continue
+        act = actions.get(_t(g, "ike-action"))
+        enc, auth, dh = [], [], []
+        for m in (act.iter("member") if act is not None else []):
+            ea, kl = _t(m, "encryp-algm"), _t(m, "encryp-key-len")
+            enc.append(f"AES-{int(kl) * 8}" if ea == "7" and kl.isdigit() else _ENC.get(ea, f"algo {ea}"))
+            auth.append(_AUTH.get(_t(m, "auth-algm"), "algo " + _t(m, "auth-algm")))
+            if _t(m, "dh-group").isdigit():
+                dh.append(int(_t(m, "dh-group")))
+        cfg.vpn.append(VpnTunnel(name=_t(g, "name"), kind="ipsec", ike=_ike_version(_t(g, "version")),
+                                 enc=enc, auth=auth, dh=dh, peer=_t(g, "peer-addr"),
+                                 mode="aggressive" if act is not None and _t(act, "mode") == "1" else "main"))
     if any(True for _ in root.iter("pptp")) and _t(root, ".//pptp/enabled", "0") == "1":
         cfg.vpn.append(VpnTunnel(name="PPTP", kind="pptp"))
     cfg.services = {"snmp_communities": [x.text for x in root.iter("community") if x.text],
                     # collecteur reconnu -> True ; sinon inconnu (Fireware a plusieurs emplacements selon les versions :
                     # syslog, Dimension, WatchGuard Cloud) : on ne conclut pas à l'absence
-                    "log_remote": True if any(_t(root, f".//{t}") for t in (
-                        "syslog-server", "log-server", "syslog-server-ip", "dimension-server", "wsm-log-server")) else None,
+                    "log_remote": _log_remote(root),
                     "ntp": _t(root, ".//ntp/enabled", "1") != "0"}
     cfg.default_action = DENY
     return cfg
+
+
+_ENC = {"1": "DES", "2": "3DES", "7": "AES"}
+_AUTH = {"1": "MD5", "2": "SHA1", "4": "SHA2-256", "5": "SHA2-384", "6": "SHA2-512"}
+
+
+def _log_remote(root) -> bool | None:
+    """Syslog (log-conf/remote-logging) ou serveur de journaux WatchGuard (common-logging) ; inconnu si absent."""
+    sp = root.find("system-parameters")
+    if sp is None:
+        return None
+    sl, cl = _t(sp, "log-conf/remote-logging/enabled"), _t(sp, "common-logging/enabled")
+    if "1" in (sl, cl):
+        return True
+    if sl == "0" and cl == "0":
+        return False
+    return None
 
 
 def _ike_version(v: str) -> int | None:

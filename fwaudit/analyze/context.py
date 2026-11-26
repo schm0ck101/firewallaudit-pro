@@ -115,7 +115,8 @@ class Ctx:
 
     def describe(self, r: Rule) -> str:
         return (f"{self.rlabel(r)} : {'AUTORISE' if r.action == 'allow' else 'BLOQUE'} de {r.src_set.describe(3)} vers "
-                f"{r.dst_set.describe(3)}, {r.svc_set.describe(4)}")
+                f"{r.dst_set.describe(3)}, {r.svc_set.describe(4)}"
+                + "".join(f" ({a})" for a in r.apps if a.startswith("géolocalisation")))
 
 
 def zones_cover(big: list[str], small: list[str]) -> bool:

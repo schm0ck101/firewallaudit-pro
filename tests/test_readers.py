@@ -181,7 +181,7 @@ def test_watchguard_reader():
     assert nas.nat and nas.dst_set.contains_ip("10.0.1.50") and nas.svc_set.has_port(5001)
     tel = next(r for r in cfg.rules if r.name == "Telnet-admin")
     assert tel.layer == "input" and tel.svc_set.has_port(23)
-    assert cfg.vpn[0].enc == ["DES"] and cfg.nat and cfg.nat[0].int_ip == "10.0.1.50"
+    assert cfg.vpn[0].enc == ["AES-128"] and cfg.vpn[0].auth == ["SHA1"] and cfg.nat and cfg.nat[0].int_ip == "10.0.1.50"
 
 
 def test_unifi_reader():

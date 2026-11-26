@@ -36,5 +36,6 @@
     <policy><name>Any</name><service>Any</service><firewall>1</firewall><enable>1</enable><log>0</log>
       <from-alias-list><alias>Any</alias></from-alias-list><to-alias-list><alias>Any</alias></to-alias-list></policy>
   </policy-list>
-  <ike-policy-list><ike-policy><name>BOVPN-Agence</name><version>1</version><encryption-algorithm>DES</encryption-algorithm><authentication-algorithm>SHA1</authentication-algorithm><dh-group>1</dh-group></ike-policy></ike-policy-list>
+  <ike-action-list><ike-action><name>Agence_bo</name><mode>0</mode><ike-transform><member><dh-group>1</dh-group><encryp-algm>7</encryp-algm><encryp-key-len>16</encryp-key-len><auth-algm>2</auth-algm></member></ike-transform></ike-action></ike-action-list>
+  <ike-policy-list><ike-policy><name>BOVPN-Agence</name><version>1</version><enabled>1</enabled><ike-action>Agence_bo</ike-action></ike-policy></ike-policy-list>
 </profile>
