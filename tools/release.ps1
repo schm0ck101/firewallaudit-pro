@@ -27,7 +27,12 @@ if ($owner -and $active -ne $owner) { gh auth switch -h github.com -u $owner | O
 git push -q origin HEAD 2>$null
 if ($LASTEXITCODE -ne 0) { Say "git push a échoué : release non publiée." Yellow; return }
 
-$assets = @(Get-ChildItem dist -File | Where-Object { $_.Name -like "*-Portable.exe" -or $_.Name -like "*-Setup-$ver.exe" } | ForEach-Object FullName)
+# version portable publiée sous un nom VERSIONNÉ (…-Portable-X.Y.Z.exe) : la mise à jour automatique la télécharge
+# à côté de l'exécutable en cours sans jamais tomber sur son nom (Windows refuse d'écraser un programme lancé)
+Get-ChildItem dist -File -Filter "*-Portable-*.exe" | Remove-Item -Force
+$plain = Get-ChildItem dist -File -Filter "*-Portable.exe" | Select-Object -First 1
+if ($plain) { Copy-Item $plain.FullName (Join-Path dist ($plain.BaseName + "-$ver.exe")) -Force }
+$assets = @(Get-ChildItem dist -File | Where-Object { $_.Name -like "*-Portable-$ver.exe" -or $_.Name -like "*-Setup-$ver.exe" } | ForEach-Object FullName)
 if ($assets.Count -lt 2) { Say "Exécutables manquants dans dist\ : release non publiée." Yellow; return }
 
 gh release view $tag *> $null
@@ -38,7 +43,7 @@ if ($LASTEXITCODE -eq 0) {
     $prev = git describe --tags --abbrev=0 2>$null
     $range = if ($LASTEXITCODE -eq 0 -and $prev) { "$prev..HEAD" } else { "HEAD" }
     $changes = (git log $range --format="- %s" --no-merges) -join "`n"
-    $portable = Split-Path -Leaf ($assets | Where-Object { $_ -like "*-Portable.exe" })
+    $portable = Split-Path -Leaf ($assets | Where-Object { $_ -like "*-Portable-*.exe" })
     $setup = Split-Path -Leaf ($assets | Where-Object { $_ -like "*-Setup-*" })
     $notes = @"
 ## Téléchargement

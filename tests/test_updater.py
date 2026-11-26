@@ -67,3 +67,19 @@ def test_download_verifies_digest(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="SHA-256"):
         updater.download(u, tmp_path / "x")
     assert not list((tmp_path / "x").glob("*.part"))
+
+
+def test_download_never_overwrites_running_exe(monkeypatch, tmp_path):
+    """Version portable : le fichier publié peut porter le nom de l'exécutable lancé (Windows refuse de l'écraser)."""
+    monkeypatch.setattr(updater, "installed_mode", lambda: "portable")
+    monkeypatch.setattr(updater.urllib.request, "urlopen", lambda req, timeout=0: FakeResp(json.dumps(release()).encode()))
+    u = updater.check()
+    running = tmp_path / "FirewallAuditPro-Portable.exe"
+    running.write_bytes(b"ancien")
+    monkeypatch.setattr(updater.sys, "executable", str(running))
+    (tmp_path / "FirewallAuditPro-Portable.exe.part").write_bytes(b"reste")
+    monkeypatch.setattr(updater.urllib.request, "urlopen",
+                        lambda req, timeout=0: FakeResp(PAYLOAD, {"Content-Length": str(len(PAYLOAD))}))
+    p = updater.download(u, tmp_path)
+    assert p.name == "FirewallAuditPro-Portable-9.9.9.exe" and running.read_bytes() == b"ancien"
+    assert not list(tmp_path.glob("*.part"))

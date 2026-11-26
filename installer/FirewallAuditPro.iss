@@ -2,7 +2,7 @@
 ; Compilation : build.ps1 (ou ISCC.exe installer\FirewallAuditPro.iss)
 
 #define AppName "FirewallAudit Pro"
-#define AppVersion "1.0.7"
+#define AppVersion "1.0.8"
 #define AppExe "FirewallAuditPro.exe"
 
 [Setup]

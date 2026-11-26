@@ -85,7 +85,19 @@ def check(timeout: float = 8.0) -> Update | None:
 def download(u: Update, dest_dir: Path, progress=None, cancel: threading.Event | None = None) -> Path:
     """Télécharge le fichier de la mise à jour, contrôle taille et empreinte. Renvoie son chemin."""
     dest_dir.mkdir(parents=True, exist_ok=True)
+    for old in dest_dir.glob("FirewallAuditPro*.part"):          # restes d'un essai précédent
+        try:
+            old.unlink()
+        except OSError:
+            pass
     final = dest_dir / u.asset_name
+    try:
+        running = Path(sys.executable).resolve()
+    except OSError:
+        running = None
+    if final.resolve() == running or final.name.lower() == Path(sys.executable).name.lower():
+        # jamais le nom de l'exécutable en cours : Windows refuse de l'écraser tant qu'il tourne
+        final = dest_dir / f"{Path(u.asset_name).stem}-{u.version}{Path(u.asset_name).suffix}"
     part = final.with_name(final.name + ".part")
     h = hashlib.sha256()
     got = 0
