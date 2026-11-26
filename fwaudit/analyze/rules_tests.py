@@ -21,6 +21,20 @@ def _config_blocks_out(c: Ctx, port: int) -> list:
             and (WAN in c.roles(r.dst_zones) or not r.dst_zones)]
 
 
+def _src_zone_ok(c: Ctx, r) -> bool:
+    """La règle s'applique-t-elle à la zone / interface du réseau d'audit ?"""
+    here = c.tests.get("audit_network") or {}
+    itf, role = here.get("interface") or "", here.get("role") or ""
+    if not r.src_zones or not (itf or role):
+        return True
+    sr = c.roles(r.src_zones)
+    if "any" in sr or (role and role in sr):
+        return True
+    if itf and (itf in r.src_zones or any(i.name == itf and i.zone and i.zone in r.src_zones for i in c.cfg.interfaces)):
+        return True
+    return False
+
+
 def _config_allows_out(c: Ctx, port: int):
     """Première règle active qui autorise ce port vers Internet depuis le réseau d'audit (si connu)."""
     from ..fw.sets import AddrSet, parse_addr
@@ -31,6 +45,8 @@ def _config_allows_out(c: Ctx, port: int):
             continue
         if "local" in c.roles(r.src_zones):    # trafic émis par le pare-feu lui-même
             continue
+        if not _src_zone_ok(c, r):
+            continue                             # règle d'une autre zone source (ex. « External → External »)
         my_ip = (c.tests.get("audit_network") or {}).get("ip")
         if my_ip:
             if not r.src_set.contains_ip(my_ip):
@@ -50,7 +66,7 @@ def _config_allows_out(c: Ctx, port: int):
 def _catch_all_deny(c: Ctx) -> bool:
     """La configuration se termine-t-elle par un refus de tout vers Internet / partout (règle explicite) ?"""
     return any(r.action == DENY and r.svc_set.is_any and r.dst_set.is_any and r.src_set.is_any and not r.extra_conditions
-               and (c.roles(r.dst_zones) & {WAN, "any"}) for r in c.active)
+               and (c.roles(r.dst_zones) & {WAN, "any"}) and _src_zone_ok(c, r) for r in c.active)
 
 
 def _path_mismatch(c: Ctx) -> str:
@@ -95,6 +111,16 @@ def egress(c: Ctx):
         c.add("test.egress.proxy", TEST, INFO, "Trafic sortant analysé par un proxy",
               "Le serveur de test est joignable mais ses réponses sont modifiées (proxy web transparent ou déchiffrement SSL) : "
               "le critère retenu pour chaque port est l'aboutissement de la connexion.", "", "")
+    here = c.tests.get("audit_network") or {}
+    if here.get("role") == "vpn":
+        tcp0 = e.get("tcp") or {}
+        n_open = sum(1 for v in tcp0.values() if (v.get("open") if isinstance(v, dict) else v))
+        c.add("test.egress.vpn", TEST, INFO, "Filtrage sortant non évalué : poste d'audit raccordé par le VPN",
+              f"Le poste d'audit était dans le réseau VPN « {here.get('interface') or here.get('network')} » "
+              f"({n_open}/{len(tcp0)} ports joignables) : son trafic Internet passe en général par sa propre connexion "
+              "(tunnel partagé), pas par ce pare-feu.",
+              "", "Relancer les tests depuis un réseau local du site (câble ou Wi-Fi interne).")
+        return
     other_path = _path_mismatch(c)
     if other_path:
         c.add("test.path", TEST, MAJOR, "Le trafic du réseau d'audit ne sort pas par ce pare-feu",

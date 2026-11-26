@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("FWAUDIT_DATA_DIR", str(Path(os.environ.get("TEMP", "/tmp")) / "fwaudit-tests"))
 
 from fwaudit.analyze.engine import analyze  # noqa: E402
-from fwaudit.analyze.model import CRIT, MAJOR, MINOR  # noqa: E402
+from fwaudit.analyze.model import CRIT, INFO, MAJOR, MINOR  # noqa: E402
 from fwaudit.fw import forti, load  # noqa: E402
 
 from test_readers import stormshield_zip  # noqa: E402
@@ -434,3 +434,22 @@ def test_fortigate_real_structure():
     names = {i.name for i in cfg.interfaces}
     assert "naf.root" not in names and "internal3" not in names and "wan1" in names     # ports inutilisés retirés
     assert next(i for i in cfg.interfaces if i.name == "wan1").zone == "WAN_SITE"      # membre SD-WAN
+
+
+def test_egress_zone_and_vpn_audit_network():
+    """UniFi (paires de zones) : la règle « External -> External » ne s'applique pas au poste d'audit ; poste raccordé
+    par le VPN d'accès distant : sortie non évaluée (tunnel partagé), aucun constat de sortie."""
+    import json
+
+    from fwaudit.fw import unifi
+    data = json.loads((CFG / "unifi_network11.json").read_text(encoding="utf-8"))
+    cfg = unifi.to_model(data)
+    tcp = {str(p): {"open": True} for p in (22, 25, 445, 4444)} | {"9001": {"open": False}}
+    base = {"config": cfg.to_dict(), "meta": {"raw_api": unifi.sanitize(data)}}
+    lan = analyze(base | {"tests": {"egress": {"tcp": tcp}, "audit_network": {
+        "network": "10.30.10.0/24", "interface": "Bureau", "role": "lan", "ip": "10.30.10.20"}}})
+    assert "test.egress.unexpected" not in {f.id for f in lan.findings}
+    vpn = analyze(base | {"tests": {"egress": {"tcp": tcp}, "audit_network": {
+        "network": "192.168.1.0/24", "interface": "Serveur OpenVPN", "role": "vpn", "ip": "192.168.1.5"}}})
+    eg = [f for f in vpn.findings if f.id.startswith("test.egress")]
+    assert [f.id for f in eg] == ["test.egress.vpn"] and eg[0].severity == INFO
