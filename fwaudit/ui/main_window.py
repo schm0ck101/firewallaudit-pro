@@ -13,6 +13,7 @@ from .history_page import HistoryPage
 from .config_page import ConfigPage
 from .results_page import ResultsPage
 from .settings_page import SettingsPage
+from .update import Updater
 
 
 class MainWindow(QMainWindow):
@@ -105,6 +106,9 @@ class MainWindow(QMainWindow):
         self.apply_icons()
         self.update_current()
         self.show_page(0)
+        self.updater = Updater(ctx, self, busy=lambda: self.analyse.worker is not None)
+        self.settings_page.check_updates.connect(lambda: self.updater.check(True))
+        self.updater.check_at_startup()
 
     def show_page(self, i: int):
         self.buttons[i].setChecked(True)

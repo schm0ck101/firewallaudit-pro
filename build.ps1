@@ -29,7 +29,7 @@ if (-not (Test-Path $py)) {
 if (-not $SkipTests) {
     Write-Host "Tests unitaires..." -ForegroundColor Cyan
     $env:FWAUDIT_DATA_DIR = Join-Path $env:TEMP "fwaudit-build-tests"
-    & $py -m pytest -q tests\test_readers.py tests\test_rules.py tests\test_followup.py
+    & $py -m pytest -q tests\test_readers.py tests\test_rules.py tests\test_followup.py tests\test_updater.py
     if ($LASTEXITCODE -ne 0) { throw "Les tests ont échoué" }
     Remove-Item Env:\FWAUDIT_DATA_DIR
 }

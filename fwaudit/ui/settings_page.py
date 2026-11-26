@@ -11,6 +11,7 @@ from .common import muted, page_title
 
 class SettingsPage(QWidget):
     applied = Signal()
+    check_updates = Signal()
 
     def __init__(self, ctx, parent=None):
         super().__init__(parent)
@@ -43,6 +44,18 @@ class SettingsPage(QWidget):
         f.addRow("", self.w["report.include_ok"])
         f.addRow("", self.w["report.include_inventory"])
         root.addWidget(g)
+        gu = QGroupBox("Mises à jour")
+        fu = QFormLayout(gu)
+        self.w["update.auto_check"] = QCheckBox("Rechercher une nouvelle version au démarrage (GitHub) et la proposer")
+        self.w["update.auto_check"].setChecked(bool(s.get("update.auto_check", True)))
+        fu.addRow("", self.w["update.auto_check"])
+        chk = QPushButton("Rechercher maintenant")
+        chk.clicked.connect(self.check_updates.emit)
+        rowu = QHBoxLayout()
+        rowu.addWidget(chk)
+        rowu.addStretch(1)
+        fu.addRow("", rowu)
+        root.addWidget(gu)
         bar = QHBoxLayout()
         bar.addStretch(1)
         save = QPushButton("Enregistrer")

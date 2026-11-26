@@ -2,7 +2,7 @@
 ; Compilation : build.ps1 (ou ISCC.exe installer\FirewallAuditPro.iss)
 
 #define AppName "FirewallAudit Pro"
-#define AppVersion "1.0.5"
+#define AppVersion "1.0.6"
 #define AppExe "FirewallAuditPro.exe"
 
 [Setup]
@@ -50,4 +50,6 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Lancer {#AppName}"; Flags: nowait postinstall skipifsilent
+; mise à jour automatique (installateur lancé en mode silencieux par l'application) : relance une fois terminé
+Filename: "{app}\{#AppExe}"; Flags: nowait postinstall skipifnotsilent runasoriginaluser
 
