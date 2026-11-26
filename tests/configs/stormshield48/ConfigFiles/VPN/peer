@@ -1,0 +1,5 @@
+[SITE-DISTANT]
+dst=IP-WAN-DISTANT
+src=Firewall_WAN_FIBRE
+conf=IKE-SITE
+ikeversion=2

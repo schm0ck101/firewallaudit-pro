@@ -1,0 +1,5 @@
+[Config]
+State=1
+
+[Server]
+ntp1.stormshieldcs.eu,0

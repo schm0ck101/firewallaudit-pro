@@ -53,7 +53,8 @@ def egress_from_lan(c: Ctx):
     if c.is_windows:
         return
     for r in c.active:
-        if (r.action != ALLOW or r.extra_conditions or r.src_set.is_any or not r.dst_set.is_any or not r.svc_set.is_any
+        if (r.action != ALLOW or r.extra_conditions or r.src_set.is_any or not (r.dst_set.is_any or r.dst_set.is_internet)
+                or not r.svc_set.is_any
                 or r.src_set.is_public() or c.to_firewall(r) or c.is_default(r) or f"pol.egress.{r.id}" in {f.id for f in c.findings}):
             continue
         if GUEST in c.roles(r.src_zones) or all(role == GUEST for _n, role, a in c.nets_by_role((GUEST, LAN, IOT))

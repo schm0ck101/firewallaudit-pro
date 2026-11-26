@@ -15,14 +15,14 @@ from .model import FwConfig
 
 VENDORS = {
     "forti": ("Fortinet FortiGate", "Sauvegarde .conf (Système › Paramètres › Sauvegarder) ou API (jeton en lecture seule)", True),
-    "stormshield": ("Stormshield SNS", "Sauvegarde .na sans mot de passe, ou dossier ConfigFiles (zip)", False),
+    "stormshield": ("Stormshield SNS", "Sauvegarde .na faite sans mot de passe (Système › Maintenance › Sauvegarder), ou dossier ConfigFiles (zip)", False),
     "sophos": ("Sophos Firewall", "Export de configuration complète (.tar contenant Entities.xml)", False),
     "watchguard": ("WatchGuard Firebox", "Configuration XML (Policy Manager › Enregistrer sous)", False),
     "unifi": ("UniFi", "API de la console (compte local en lecture seule)", True),
     "mikrotik": ("MikroTik RouterOS", "Fichier /export (.rsc) ou SSH en lecture", True),
     "windows": ("Pare-feu Windows", "Ce poste, ou fichier .json produit par --windows-export sur un serveur", True),
 }
-VALIDATED = {"forti": False, "stormshield": False, "sophos": False, "watchguard": False, "unifi": False, "mikrotik": False,
+VALIDATED = {"forti": False, "stormshield": True, "sophos": False, "watchguard": True, "unifi": True, "mikrotik": False,
              "windows": True}      # lecteurs validés sur des données réelles (mis à jour au fil des retours terrain)
 
 

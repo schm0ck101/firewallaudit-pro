@@ -121,6 +121,8 @@ def admin_from_wan(c: Ctx):
                 lab, sev = ADMIN_LABELS.get(a, (a, MINOR))
                 hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »"))
         for r in c.active:
+            if any("vpn" in n.lower() for n in r.svc_names):
+                continue                       # portail / service VPN (SSL VPN, OpenVPN) : exposition attendue
             if (r.action == ALLOW and c.to_firewall(r) and c.from_wan(r) and not c.is_default(r)
                     and not (r.users or r.schedule or [a for a in r.apps if not a.startswith("géolocalisation")])):
                 for p in (443, 80, 22, 23, 8443, 4444, 10443, 8291, 1300, 4433, 8080, 4117, 4105, 4118):

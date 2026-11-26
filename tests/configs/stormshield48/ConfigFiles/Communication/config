@@ -1,0 +1,5 @@
+[Syslog0]
+Name="Syslog Profile 0"
+State=0
+Server=
+Port=syslog

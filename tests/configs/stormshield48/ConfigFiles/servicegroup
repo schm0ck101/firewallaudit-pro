@@ -1,0 +1,4 @@
+[Admin_srv]	# Administrative Services
+firewall_srv
+admin_netasq
+SSH_2222

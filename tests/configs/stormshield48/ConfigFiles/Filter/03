@@ -1,0 +1,21 @@
+[NAT]
+nat from LANs-SITE to internet on WAN_FIBRE -> from Firewall_WAN_FIBRE port ephemeral_fw random rulename "a1_3"
+
+[Filter]
+separator color="ff0000" comment="admin" collapse="0"
+pass from LANs-SITE|IP_PRESTAS to Firewall_all port Admin_srv
+separator color="ff00ff" comment="DNAT" collapse="0"
+pass from IP_PRESTAS on WAN_FIBRE to Firewall_WAN_FIBRE port RDP_3390 -> to SRV-HYPERV port rdp_tcp rulename "b1_8"	# TELEM HYPERV
+pass from internet on WAN-SAT to Firewall_WAN-SAT port TCP_8444 -> to SRV-WEB port https rulename "b2_8"	# Portail web
+pass from internet on WAN_FIBRE to Firewall_WAN_FIBRE port sslvpn|udpvpn rulename "c1_15"	# Created on 2023-01-11 16:42:19,by admin (192.0.2.45)
+separator color="808000" comment="sortie" collapse="0"
+pass route WAN-UPLINK from LANs-SITE to internet iprep windowsupdate rulename "d1_15"
+decrypt inspection ips sslfiltering:2 from LANs-SITE to internet port https
+pass inspection ips urlfiltering:2,antivirus from LANs-SITE via sslproxy to internet port https
+pass inspection firewall from Network_LAN-TOIP to internet rulename "e1_54"	# POSTES VERS INTERNET
+pass from POSTE-LIBRE to any rulename "f1_2"	# Créé le 2025-11-25 15:19:41 par admin (192.0.2.225)
+block log level major from any to any iprep anonymizer|botnet|malware
+block from any iprep anonymizer|botnet|malware to any
+pass inspection firewall from LAN_DISTANT via ipsec to Network_LAN-SITE rulename "g1_19"
+off pass from any to any
+block all

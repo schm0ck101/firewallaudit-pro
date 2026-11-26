@@ -1,0 +1,11 @@
+[Global]
+default=IKE-SITE
+
+[GoodEncryption]
+defaultdh=2
+enc=aes/128 auth=sha1
+
+[IKE-SITE]
+defaultdh=14
+lifetime=21600
+enc=aes_gcm_16/256 auth=

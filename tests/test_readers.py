@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("FWAUDIT_DATA_DIR", str(Path(os.environ.get("TEMP", "/tmp")) / "fwaudit-tests"))
 
+from fwaudit.analyze.engine import analyze  # noqa: E402
+from fwaudit.analyze.model import MINOR  # noqa: E402
 from fwaudit.fw import load, mikrotik  # noqa: E402
 from fwaudit.fw.sets import AddrSet, SvcSet, parse_addr  # noqa: E402
 
@@ -206,3 +208,71 @@ def test_detection_rejects_unknown(tmp_path):
         assert "non reconnu" in str(exc)
     else:
         raise AssertionError("fichier inconnu accepté")
+
+
+def _make_na(files: dict, password: str = "") -> bytes:
+    """Sauvegarde .na au format SNS 4.x : en-tête [BACKUP], signature (factice), tar.gz chiffré AES-128-CBC / PBKDF2-SHA256."""
+    import gzip
+    import hashlib
+    import os
+    import tarfile
+
+    from cryptography.hazmat.primitives import padding
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    bio = io.BytesIO()
+    with tarfile.open(fileobj=bio, mode="w") as t:
+        for rel, txt in files.items():
+            data = txt.encode("utf-8")
+            ti = tarfile.TarInfo("usr/Firewall/ConfigFiles/" + rel)
+            ti.size = len(data)
+            t.addfile(ti, io.BytesIO(data))
+    pt = gzip.compress(bio.getvalue())
+    iv, salt = os.urandom(16), os.urandom(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 10000, 16)
+    padder = padding.PKCS7(128).padder()
+    enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    ct = enc.update(padder.update(pt) + padder.finalize()) + enc.finalize()
+    head = (f"[BACKUP]\nmajversion=2\nalgo=1\nmodel=SN210W\nversion=4.8.14\nserial=SN210W00TEST0000\n"
+            f"iv={iv.hex()}\nsalt={salt.hex()}\npbkdf_iterations=10000\n\n").encode()
+    sig = b"0" * 64
+    return head.ljust(0x400, bytes(1)) + len(sig).to_bytes(4, "big") + sig + len(ct).to_bytes(4, "big") + ct
+
+
+def test_stormshield_real_na(tmp_path):
+    """Sauvegarde SNS 4.8 réelle (structure anonymisée) : .na chiffrée sans mot de passe, redirections intégrées aux règles,
+    objets Network_/Firewall_<interface>, groupes avec commentaire, services port/proto, VPN, syslog, NTP."""
+    import pytest
+    base = CFG / "stormshield48" / "ConfigFiles"
+    files = {p.relative_to(base).as_posix(): p.read_text(encoding="utf-8") for p in base.rglob("*") if p.is_file()}
+    na = tmp_path / "SN210W00TEST0000_2026-11-26.na"
+    na.write_bytes(_make_na(files))
+    cfg, meta = load.from_file(na)
+    assert meta["vendor"] == "stormshield" and cfg.model == "SN210W" and cfg.version == "4.8.14"
+    roles = {i.name: (i.role, i.ips) for i in cfg.interfaces}
+    assert "dmz2" not in roles and roles["WAN-SAT"][0] == "wan" and roles["WAN_FIBRE"][0] == "wan"
+    assert roles["LAN-WIFI-INVITE"][0] == "guest" and roles["LAN-TOIP"][0] == "lan"
+    adm = cfg.rules[0]
+    assert adm.layer == "input" and adm.svc_set.has_port(1300) and adm.svc_set.has_port(2222)
+    assert adm.src_set.contains_ip("198.51.100.230") and adm.src_set.contains_ip("192.168.254.20")
+    rdp = next(r for r in cfg.rules if r.comment == "TELEM HYPERV")
+    assert rdp.nat and rdp.layer == "filter" and rdp.svc_set.has_port(3389) and rdp.dst_set.contains_ip("192.168.254.15")
+    nat = {n.int_ip: n for n in cfg.nat}
+    assert nat["192.168.254.15"].ext_ports == "3390" and nat["192.168.254.15"].src_restrict == ["198.51.100.224/28"]
+    assert nat["192.168.254.10"].ext_ports == "8444" and nat["192.168.254.10"].src_restrict == []
+    v = cfg.vpn[0]
+    assert v.name == "SITE-DISTANT" and v.ike == 2 and v.dh == [14] and v.enc == ["AES-GCM-256"]
+    assert cfg.services["log_remote"] is False and cfg.services["ntp"] is True
+    a = analyze({"config": cfg.to_dict(), "meta": {}, "tests": {}})
+    got = {f.id: f for f in a.findings}
+    assert got["pol.inbound.2"].severity == MINOR                      # RDP publié mais limité au prestataire
+    assert [f for f in a.findings if f.id.startswith("expo.admin.") and "#1" in f.title]
+    assert not [f for f in a.findings if f.id.startswith("expo.admin.") and "#4" in f.title]   # VPN SSL, pas d'admin
+    assert "pol.egress.8" in got and "pol.egress.9" in got               # VoIP et poste « vers tout » sans restriction
+    assert "pol.egress.5" not in got                                    # sortie limitée par réputation (windowsupdate)
+    assert not [f for f in a.findings if f.id.startswith(("pol.redundant", "pol.shadow"))], [f.evidence for f in a.findings]
+    assert got["sys.vpn.SITE-DISTANT"].severity == 0 and got["sys.log"].severity == MINOR and "sys.ntp" not in got
+    assert "Internet" in got["pol.egress.8"].detail
+    # sauvegarde protégée par un mot de passe : message clair
+    na.write_bytes(_make_na(files, "secret"))
+    with pytest.raises(ValueError, match="mot de passe"):
+        load.from_file(na)

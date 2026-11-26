@@ -105,9 +105,16 @@ class AddrSet:
         inside = any(lo <= n <= hi for lo, hi in self.iv)
         return inside != self.negate
 
+    @property
+    def is_internet(self) -> bool:
+        """Couvre tout l'espace public (« internet » Stormshield, « Internet » des zones) sans être « tout »."""
+        return not self.negate and not self.is_any and _covers(self.iv, _public_iv())
+
     def describe(self, limit: int = 4) -> str:
         if self.is_any:
             return "tout"
+        if self.is_internet and not self.opaque:
+            return "Internet"
         parts = []
         for lo, hi in self.iv[:limit]:
             parts.append(_fmt(lo, hi))
@@ -141,6 +148,23 @@ class AddrSet:
 PRIVATE = [("0.0.0.0", "0.255.255.255"), ("10.0.0.0", "10.255.255.255"), ("100.64.0.0", "100.127.255.255"),
            ("127.0.0.0", "127.255.255.255"), ("169.254.0.0", "169.254.255.255"), ("172.16.0.0", "172.31.255.255"),
            ("192.168.0.0", "192.168.255.255"), ("224.0.0.0", "255.255.255.255")]
+
+
+_PUB: list = []
+
+
+def _public_iv() -> list[tuple[int, int]]:
+    """Plages publiques = complément des plages privées / réservées."""
+    if not _PUB:
+        priv = sorted((int(ipaddress.IPv4Address(a)), int(ipaddress.IPv4Address(b))) for a, b in PRIVATE)
+        cur = 0
+        for lo, hi in priv:
+            if lo > cur:
+                _PUB.append((cur, lo - 1))
+            cur = max(cur, hi + 1)
+        if cur <= MAX_IP:
+            _PUB.append((cur, MAX_IP))
+    return _PUB
 
 
 def _fmt(lo: int, hi: int) -> str:
