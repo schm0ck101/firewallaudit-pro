@@ -6,7 +6,7 @@
 #define AppExe "FirewallAuditPro.exe"
 
 [Setup]
-AppId={{CDB0C3F8-A298-4F63-BCBC-3992826A6DAB}
+AppId={{CDB0C3F8-A298-4F63-BCBC-3992826A6DAB}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
