@@ -4,7 +4,8 @@ distant exposés, UPnP, résolveur DNS ouvert. Calcule aussi la liste des
 ports qu'on DEVRAIT trouver ouverts de l'extérieur (comparée au scan externe)."""
 from __future__ import annotations
 
-from ..fw.model import ALLOW, WAN
+from ..fw.model import ALLOW, DENY, WAN
+from ..fw.sets import AddrSet
 from .context import SENSITIVE, Ctx
 from .model import CRIT, EXPO, INFO, MAJOR, MINOR
 
@@ -70,6 +71,16 @@ def published_services(c: Ctx):
         if "Fortinet" in c.cfg.vendor and not any(r.dst_set.contains_ip(n.int_ip) for r in allowed_targets):
             continue
         ports = _ports(n.int_port or n.ext_ports) or _ports(n.ext_ports)
+        if not n.src_restrict and n.int_ip:
+            # sources réellement autorisées : celles des règles qui laissent passer vers l'adresse publiée
+            allow = [r for r in allowed_targets if r.dst_set.contains_ip(n.int_ip)]
+            if allow and not any(r.src_set.is_any or r.src_set.is_internet or r.src_set.negate for r in allow):
+                srcs = []
+                for r in allow:
+                    d = r.src_set.describe(3)
+                    if d not in srcs:
+                        srcs.append(d)
+                n.src_restrict = srcs[:3]
         sens = sorted({(p, SENSITIVE[p]) for lo, hi in ports for p in SENSITIVE if lo <= p <= hi and SENSITIVE[p][1] >= 3})
         line = (f"« {n.name or n.id} » : port public {n.ext_ports or 'tous'} ({n.proto}) → {n.int_ip}:{n.int_port or n.ext_ports}"
                 + (f", limité à {', '.join(n.src_restrict)}" if n.src_restrict else ", depuis tout Internet"))
@@ -119,7 +130,17 @@ def admin_from_wan(c: Ctx):
                 if a in ("ping", "fgfm", "probe-response", "dns", "ping6", "capwap"):
                     continue
                 lab, sev = ADMIN_LABELS.get(a, (a, MINOR))
-                hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »"))
+                port = {"https": 443, "http": 80, "ssh": 22, "telnet": 23, "snmp": 161}.get(a)
+                # refus « tout sauf ces adresses » sur l'accès au pare-feu (local-in FortiGate) : accès limité
+                lim = next((r for r in c.active if r.layer == "input" and r.action == DENY and r.src_set.negate and port
+                            and r.svc_set.has_port(port, 17 if port == 161 else 6)
+                            and (not r.src_zones or i.name in r.src_zones)), None)
+                if lim is not None:
+                    sev = min(sev, MINOR)
+                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », limité(e) à "
+                                      f"{AddrSet(lim.src_set.iv, lim.src_set.opaque).describe(3)} ({lim.label()})"))
+                else:
+                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »"))
         for r in c.active:
             if any("vpn" in n.lower() for n in r.svc_names):
                 continue                       # portail / service VPN (SSL VPN, OpenVPN) : exposition attendue

@@ -195,6 +195,9 @@ def to_model(text: str, source: str = "") -> FwConfig:
     for name, d in ifaces.items():
         role = _v(d, "role") or ""
         role = {"wan": WAN, "lan": LAN, "dmz": "dmz", "undefined": ""}.get(role, "") or guess_role(name + " " + _v(d, "alias"))
+        named_role = guess_role(name + " " + _v(d, "alias"))
+        if role == LAN and named_role in ("guest", "iot", "mgmt"):
+            role = named_role                              # « lan » côté FortiGate mais réseau invités / objets d'après son nom
         ip = _l(d, "ip")
         cidr = []
         if len(ip) >= 2:
@@ -255,6 +258,12 @@ def to_model(text: str, source: str = "") -> FwConfig:
                 sa.negate = True
             if _v(p, "dstaddr-negate") == "enable":
                 da.negate = True
+            isdb_dst = _l(p, "internet-service-name") + _l(p, "internet-service-group") + _l(p, "internet-service-custom")
+            if _v(p, "internet-service") == "enable" and not da.iv and not da.opaque:
+                da = AddrSet(opaque=frozenset(isdb_dst or ["Internet Service"]))
+            isdb_src = _l(p, "internet-service-src-name") + _l(p, "internet-service-src-group") + _l(p, "internet-service-src-custom")
+            if _v(p, "internet-service-src") == "enable" and not sa.iv and not sa.opaque:
+                sa = AddrSet(opaque=frozenset(isdb_src or ["Internet Service"]))
             r.set_src(sa)
             r.set_dst(da)
             sv = SvcSet()
@@ -287,7 +296,13 @@ def to_model(text: str, source: str = "") -> FwConfig:
             sa = AddrSet()
             for n in _l(p, "srcaddr"):
                 sa = sa.union(_addr_of(n, addrs, agrp))
+            if _v(p, "srcaddr-negate") == "enable":
+                sa.negate = True                 # « tout sauf ces adresses » : typiquement un refus sauf prestataire
             r.set_src(sa)
+            r.src_names = _l(p, "srcaddr")
+            r.set_dst(AddrSet(opaque=frozenset(["le pare-feu"])))
+            r.dst_names = _l(p, "dstaddr") or ["le pare-feu"]
+            r.comment = _v(p, "comments")
             sv = SvcSet()
             for n in _l(p, "service") or ["ALL"]:
                 sv = sv.union(_svc_of(n, svcs, sgrp))

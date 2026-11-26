@@ -381,7 +381,7 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
                 ink = "#9aa5b1" if not r.get("enabled") else INK
                 act = ("autorise" if r["action"] == "allow" else "bloque") + ("" if r.get("enabled") else " (inactive)")
                 zones = f"{', '.join(r.get('src_zones') or []) or 'toutes'} → {', '.join(r.get('dst_zones') or []) or 'toutes'}"
-                h.append(f"<tr><td class='small' style='color:{ink}'>{r['pos'] + 1}</td>"
+                h.append(f"<tr><td class='small' style='color:{ink}'>{_e(str(r['id']))}</td>"
                          f"<td class='small' style='color:{col if flags else ink}'>{'● ' if flags else ''}{_e(r.get('name') or '—')}</td>"
                          f"<td class='small' style='color:{ink}'>{_e(act)}</td><td class='small' style='color:{ink}'>{_e(zones)}</td>"
                          f"<td class='small' style='color:{ink}'>{_e(r['src'])}</td><td class='small' style='color:{ink}'>{_e(r['dst'])}</td>"

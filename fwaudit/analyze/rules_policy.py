@@ -35,6 +35,12 @@ def any_any(c: Ctx):
                   "Un poste infecté peut joindre n'importe quel serveur sur n'importe quel port (exfiltration, botnet, spam).",
                   "Limiter la sortie aux services nécessaires (web, DNS vers les résolveurs internes, messagerie…), "
                   "ou au minimum appliquer filtrage web, IPS et contrôle applicatif sur cette règle.")
+        elif dr and dr <= {GUEST, IOT} and not (sr & {GUEST, IOT, WAN, ANY}):
+            c.add(f"pol.wide.{r.id}", POL, MINOR, f"Tout autorisé vers un réseau moins sensible : {r.label()}",
+                  c.describe(r),
+                  "Les postes internes peuvent tout ouvrir vers ce réseau ; le risque principal (de ce réseau vers les postes) "
+                  "dépend des règles inverses.",
+                  "Limiter aux flux nécessaires (DHCP, DNS, administration des équipements).")
         elif VPN in (sr | dr):
             c.add(f"pol.wide.{r.id}", POL, MINOR, f"Tout autorisé à travers un VPN : {r.label()}",
                   c.describe(r),
@@ -85,7 +91,7 @@ def inbound_sensitive(c: Ctx):
         sev = CRIT if open_src and any(s >= 4 for _p, _l, s in hits) else MAJOR if open_src else MINOR
         if open_src and any(a.startswith("géolocalisation") for a in r.apps):
             sev = MAJOR if sev == CRIT else sev        # ouvert, mais limité à certains pays
-        names = ", ".join(sorted({lab for _p, lab, _s in hits}))
+        names = "tous les services" if r.svc_set.is_any else ", ".join(sorted({lab for _p, lab, _s in hits}))
         c.add(f"pol.inbound.{r.id}", POL, sev, f"Accès depuis Internet à {names} : {r.label()}",
               c.describe(r) + ("" if open_src else " (sources restreintes)"),
               "Ces services sont la première cible des attaques automatisées (force brute, failles connues) et la porte "

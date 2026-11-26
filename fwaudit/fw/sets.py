@@ -80,6 +80,8 @@ class AddrSet:
         return sum(hi - lo + 1 for lo, hi in self.iv)
 
     def covers(self, other: "AddrSet") -> bool:
+        if not other.iv and not other.opaque and not other.negate:
+            return False                         # ensemble vide = objet non résolu : on ne conclut pas
         if self.is_any:
             return True
         if self.negate or other.negate:

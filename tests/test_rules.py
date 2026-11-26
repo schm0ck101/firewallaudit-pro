@@ -289,3 +289,121 @@ def test_probes_proxy_and_interception(monkeypatch):
     monkeypatch.setattr(probes.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(OSError()))
     e = probes.egress()
     assert not e.get("error") and e.get("proxied") and e["tcp"]["443"]["open"] and not e["tcp"]["22"]["open"]
+
+
+
+FORTI_REAL = """#config-version=FGT80F-7.4.13-FW-build2933-260101:opmode=0:vdom=0:user=admin
+config system global
+    set hostname "FW-SITE"
+end
+config system interface
+    edit "wan1"
+        set ip 203.0.113.154 255.255.255.252
+        set allowaccess ping https ssh
+        set role wan
+    next
+    edit "LAN_SITE"
+        set ip 10.33.43.254 255.255.255.0
+        set role lan
+        set interface "internal1"
+        set vlanid 43
+    next
+    edit "WIFI-INVITE"
+        set ip 10.33.45.254 255.255.255.0
+        set role lan
+        set interface "internal1"
+        set vlanid 45
+    next
+end
+config firewall address
+    edit "LAN_43"
+        set subnet 10.33.43.0 255.255.255.0
+    next
+    edit "PRESTA"
+        set subnet 198.51.100.224 255.255.255.240
+    next
+    edit "CYBER"
+        set subnet 5.61.56.7 255.255.255.255
+    next
+end
+config firewall vip
+    edit "VIP_RDP_DC"
+        set extip 203.0.113.154
+        set mappedip "10.33.43.199"
+        set extintf "wan1"
+        set portforward enable
+        set extport 3389
+        set mappedport 3389
+    next
+end
+config firewall policy
+    edit 39
+        set name "Blocage Cyber"
+        set srcintf "LAN_SITE"
+        set dstintf "wan1"
+        set srcaddr "LAN_43"
+        set dstaddr "CYBER"
+        set schedule "always"
+        set service "ALL"
+    next
+    edit 4
+        set name "O365"
+        set srcintf "LAN_SITE"
+        set dstintf "wan1"
+        set action accept
+        set srcaddr "LAN_43"
+        set internet-service enable
+        set internet-service-name "Microsoft-Office365"
+        set schedule "always"
+    next
+    edit 16
+        set name "TELEMAINTENANCE"
+        set srcintf "wan1"
+        set dstintf "LAN_SITE"
+        set action accept
+        set srcaddr "PRESTA"
+        set dstaddr "VIP_RDP_DC"
+        set schedule "always"
+        set service "ALL"
+    next
+    edit 13
+        set name "AD_to_WIFI-INVITE"
+        set srcintf "LAN_SITE"
+        set dstintf "WIFI-INVITE"
+        set action accept
+        set srcaddr "all"
+        set dstaddr "all"
+        set schedule "always"
+        set service "ALL"
+    next
+end
+config firewall local-in-policy
+    edit 1
+        set intf "wan1"
+        set srcaddr "PRESTA"
+        set srcaddr-negate enable
+        set dstaddr "all"
+        set service "SSH" "HTTPS"
+        set schedule "always"
+    next
+end
+"""
+
+
+def test_fortigate_real_structure():
+    """Structure relevée sur un vrai FortiGate 80F (FortiOS 7.4) : identifiants de règles hors ordre, destination
+    « Internet Service », VIP dont la source est restreinte par la RÈGLE, local-in « tout sauf le prestataire »."""
+    cfg = forti.to_model(FORTI_REAL)
+    o365 = next(r for r in cfg.rules if r.name == "O365")
+    assert o365.dst_set.opaque == frozenset(["Microsoft-Office365"])
+    li = next(r for r in cfg.rules if r.id == "local-in 1")
+    assert li.action == "deny" and li.src_set.negate and li.layer == "input"
+    a = run(cfg)
+    got = {f.id: f for f in a.findings}
+    assert not [i for i in got if i.startswith("pol.shadow")], [f.title for f in a.findings]   # O365 n'est pas masquée
+    assert not [f for f in a.findings if f.id.startswith("expo.nat.") and f.severity >= MAJOR]  # RDP limité par la règle 16
+    assert "198.51.100.224/28" in " ".join(got["expo.nat.list"].evidence)
+    assert got["pol.inbound.16"].title.startswith("Accès depuis Internet à tous les services")
+    assert got["pol.wide.13"].severity == MINOR                                       # LAN -> invités
+    adm = [f.title for f in a.findings if f.id.startswith("expo.admin.")]
+    assert adm and all("limité" in t and "198.51.100.224/28" in t for t in adm), adm         # local-in « sauf prestataire »
