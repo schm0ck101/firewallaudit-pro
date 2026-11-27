@@ -80,6 +80,12 @@ def analyze(snapshot: dict, prev_snapshot: dict | None = None) -> Analysis:
         except Exception as exc:
             log.error("Règle %s : %s\n%s", rule.__name__, exc, traceback.format_exc())
             errors.append(f"{rule.__module__.rsplit('.', 1)[-1]}.{rule.__name__} : {exc}")
+    try:
+        from . import remedy
+        remedy.attach(c)
+    except Exception as exc:              # les corrections proposées ne doivent jamais empêcher l'analyse
+        log.error("Corrections proposées : %s\n%s", exc, traceback.format_exc())
+        errors.append(f"remedy : {exc}")
     for note in c.cfg.notes:
         c.add(f"sys.note.{abs(hash(note)) % 10**8}", SYS, INFO, "Remarque de lecture de la configuration", note)
     for e in snapshot.get("errors") or []:

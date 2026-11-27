@@ -348,7 +348,8 @@ def to_model(text: str, source: str = "") -> FwConfig:
             r.dst_names = _l(p, "dstaddr") or ["le pare-feu"]
             r.comment = _v(p, "comments")
             sv = SvcSet()
-            for n in _l(p, "service") or ["ALL"]:
+            r.svc_names = _l(p, "service") or ["ALL"]
+            for n in r.svc_names:
                 sv = sv.union(_svc_of(n, svcs, sgrp))
             r.set_svc(sv)
             r.enabled = _v(p, "status", "enable") != "disable"
@@ -367,6 +368,11 @@ def to_model(text: str, source: str = "") -> FwConfig:
             cfg.nat.append(n)
             used.add(vid)
         for name in list(addrs) + list(agrp):
+            if name.startswith(("EMS_ALL_", "FCTEMS_")) or name in ("G Suite", "Microsoft Office 365"):
+                continue                     # objets créés d'office par FortiOS
+            # référencé ailleurs que dans sa propre définition (groupe, local-in, VPN, routage, proxy…) : utilisé
+            if text.count(f'"{name}"') + len(re.findall(r"\s" + re.escape(name) + r"\s", text)) > 1:
+                continue
             if name not in used and name not in ("all", "none", "FIREWALL_AUTH_PORTAL_ADDRESS", "FABRIC_DEVICE",
                                                  "SSLVPN_TUNNEL_ADDR1", "login.microsoftonline.com", "login.microsoft.com",
                                                  "login.windows.net", "gmail.com", "wildcard.google.com", "wildcard.dropbox.com"):
@@ -437,6 +443,11 @@ def to_model(text: str, source: str = "") -> FwConfig:
         "admin_maintainer": _v(g, "admin-maintainer", "enable") == "enable",
         "admin_lockout_duration": _v(g, "admin-lockout-duration", "60"),
     }
+    # contexte des commandes de correction : mode VDOM (config vdom / config global) et objets inutilisés qui sont des groupes
+    cfg.services["forti_vdom_mode"] = bool(re.search(r":vdom=1", text[:300])) or "config vdom" in tree
+    cfg.services["forti_vdoms"] = [vn for vn, _vt in vdoms if vn] or ([vdom_only] if vdom_only else [])
+    cfg.services["forti_unused_groups"] = [n for _vn, vt in vdoms for n in (_Vdom(vt, glob).sec("config firewall addrgrp") or {})
+                                           if n in cfg.objects_unused]
     if vdom_only and not g:
         # valeurs globales inconnues : ne pas conclure sur les valeurs par défaut
         override = any(_v(vt.get(k) or {}, "status") == "enable" or _v(vt.get(k) or {}, "override") == "enable"

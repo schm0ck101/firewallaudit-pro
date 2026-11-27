@@ -28,6 +28,9 @@ class Finding:
     fix: str = ""              # que faire
     evidence: list[str] = field(default_factory=list)
     predictive: bool = False   # risque à venir (et pas seulement un défaut actuel)
+    refs: dict = field(default_factory=dict)   # références exactes (règles, interface, objets) pour la correction proposée
+    remedy: str = ""           # correction proposée, dans la syntaxe du constructeur (jamais appliquée par l'appli)
+    remedy_kind: str = ""      # cli-fortios / routeros / powershell / gui
 
     def to_dict(self) -> dict:
         return asdict(self)

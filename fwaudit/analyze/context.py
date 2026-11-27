@@ -42,8 +42,9 @@ class Ctx:
         self.findings: list[Finding] = []
         self.active = [r for r in self.cfg.rules if r.enabled]
 
-    def add(self, fid, domain, sev, title, detail="", impact="", fix="", evidence=None, predictive=False):
-        self.findings.append(Finding(fid, domain, sev, title, detail, impact, fix, [str(e) for e in (evidence or [])][:40], predictive))
+    def add(self, fid, domain, sev, title, detail="", impact="", fix="", evidence=None, predictive=False, refs=None):
+        self.findings.append(Finding(fid, domain, sev, title, detail, impact, fix, [str(e) for e in (evidence or [])][:40], predictive,
+                                     dict(refs or {})))
 
     def ok(self, fid, domain, title, detail=""):
         self.findings.append(Finding(fid, domain, OK, title, detail))

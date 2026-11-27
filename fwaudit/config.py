@@ -16,7 +16,7 @@ import threading
 from pathlib import Path
 
 APP_NAME = "FirewallAudit Pro"
-APP_VERSION = "1.0.15"
+APP_VERSION = "1.0.16"
 AUTHOR = "SCHMOCK"
 AUTHOR_URL = "https://schmock.fr"
 log = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def data_dir() -> Path:
 
 DEFAULTS: dict = {
     "report": {"company": AUTHOR, "auditor": "", "logo": "", "phone": "", "email": "", "website": AUTHOR_URL,
-               "include_ok": True, "include_inventory": True},
+               "include_ok": True, "include_inventory": True, "include_remedies": True},
     "ui": {"theme": "dark"},
     "update": {"auto_check": True, "skip": ""},
     "last": {"client": "", "site": ""},

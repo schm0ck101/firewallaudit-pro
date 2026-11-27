@@ -25,6 +25,15 @@ def rule(fn):
     return fn
 
 
+def _fz(d: dict) -> tuple:
+    """dict -> tuple hachable (les constats sont dédoublonnés par set())."""
+    return tuple(sorted((k, tuple(v) if isinstance(v, list) else v) for k, v in d.items()))
+
+
+def _unfz(t: tuple) -> dict:
+    return {k: list(v) if isinstance(v, tuple) else v for k, v in t}
+
+
 def _ports(spec: str) -> list[tuple[int, int]]:
     out = []
     for part in str(spec or "").replace(" ", "").split(","):
@@ -92,20 +101,22 @@ def published_services(c: Ctx):
         line = (f"« {n.name or n.id} » : port public {n.ext_ports or 'tous'} ({n.proto}) → {n.int_ip}:{n.int_port or n.ext_ports}"
                 + (f", limité à {', '.join(n.src_restrict)}" if n.src_restrict else
                    f", depuis tout le pays {', '.join(geo)}" if geo else ", depuis tout Internet"))
+        nref = {"nat": n.id, "nat_name": n.name, "int_ip": n.int_ip, "ports": n.ext_ports, "geo": geo,
+                "rules": [r.id for r in allowed_targets if n.int_ip and r.dst_set.contains_ip(n.int_ip)]}
         if sens and not n.src_restrict:
-            crit.append((line, sens if not geo else [(p, (lab, min(sv, 3))) for p, (lab, sv) in sens]))
+            crit.append((line, sens if not geo else [(p, (lab, min(sv, 3))) for p, (lab, sv) in sens], nref))
         else:
             info.append(line)
         if not ports and not n.src_restrict:
-            crit.append((line + " (TOUS les ports)", [(0, ("tous les ports", 4))]))
-    for line, sens in crit:
+            crit.append((line + " (TOUS les ports)", [(0, ("tous les ports", 4))], nref))
+    for line, sens, nref in crit:
         sev = CRIT if any(s[1] >= 4 for _p, s in sens) else MAJOR
         names = ", ".join(sorted({s[0] for _p, s in sens}))
         c.add(f"expo.nat.{abs(hash(line)) % 10**8}", EXPO, sev,
-              f"{names} publié sur Internet " + ("(seul filtre : le pays)" if ", depuis tout le pays" in line else "sans restriction"),
+              f"{names} publié sur Internet " + ("(filtré par pays seulement)" if ", depuis tout le pays" in line else "sans restriction"),
               line, "Service directement attaquable depuis Internet : force brute, failles connues, rançongiciels.",
               "Supprimer la redirection et passer par un VPN avec MFA ; à défaut, restreindre aux adresses sources connues "
-              "et activer IPS + journalisation.")
+              "et activer IPS + journalisation.", refs=nref)
     if info:
         c.add("expo.nat.list", EXPO, INFO, f"{len(info)} autre(s) service(s) publié(s) sur Internet", "", "",
               "Vérifier que chaque publication est encore nécessaire et maintenue à jour.", info)
@@ -130,7 +141,7 @@ def admin_from_wan(c: Ctx):
             if exposed or any(r.svc_set.has_port(port) and (not r.src_zones or any(cfg.zone_role(z) == WAN for z in r.src_zones))
                               for r in explicit):
                 lab, sev = ADMIN_LABELS.get(name, (name, MAJOR))
-                hits.append((sev, f"{lab} (port {port}) joignable depuis Internet"))
+                hits.append((sev, f"{lab} (port {port}) joignable depuis Internet", _fz({"svc": name, "port": port})))
     else:
         for i in cfg.interfaces:
             if i.role != WAN or not i.enabled:
@@ -154,15 +165,17 @@ def admin_from_wan(c: Ctx):
                 if lim is not None:
                     allowed = AddrSet(lim.src_set.iv, lim.src_set.opaque)
                     geo = sorted(o for o in allowed.opaque if "geography" in o or "pays" in o.lower())
+                    ref = {"iface": i.name, "svc": a, "port": port, "limit": lim.id, "limit_src": lim.src_names}
                     if geo:
                         # un pays entier n'est pas une « adresse de confiance »
                         sev = min(sev, MAJOR)
                         hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », ouvert(e) à tout le pays "
-                                          f"{', '.join(geo)} (+ {AddrSet(allowed.iv).describe(3)}) ({lim.label()})"))
+                                          f"{', '.join(geo)} (+ {AddrSet(allowed.iv).describe(3)}) ({lim.label()})",
+                                     _fz({**ref, "geo": geo})))
                     else:
                         sev = min(sev, MINOR)
                         hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », limité(e) à "
-                                          f"{allowed.describe(3)} ({lim.label()})"))
+                                          f"{allowed.describe(3)} ({lim.label()})", _fz(ref)))
                 else:
                     why = ""
                     near = next((r for r in c.active if r.layer == "input" and r.action == DENY and port
@@ -171,7 +184,9 @@ def admin_from_wan(c: Ctx):
                         # ex. service « SNMP » redéfini en TCP 161 : le vrai SNMP (UDP) passe à côté du refus
                         why = (f" : {near.label()} vise le port {port} en {'TCP' if proto == 17 else 'UDP'} seulement, "
                                f"le service réel ({'UDP' if proto == 17 else 'TCP'} {port}) n'est pas filtré")
-                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »{why}"))
+                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »{why}",
+                                 _fz({"iface": i.name, "svc": a, "port": port, "near": near.id if near is not None else "",
+                                      "near_svc": list(near.svc_names) if near is not None else []})))
         for r in c.active:
             if any("vpn" in n.lower() for n in r.svc_names):
                 continue                       # portail / service VPN (SSL VPN, OpenVPN) : exposition attendue
@@ -180,13 +195,14 @@ def admin_from_wan(c: Ctx):
                 for p in (443, 80, 22, 23, 8443, 4444, 10443, 8291, 1300, 4433, 8080, 4117, 4105, 4118):
                     if r.svc_set.has_port(p):
                         sev = MAJOR if r.src_set.is_any else MINOR
-                        hits.append((sev, f"règle {r.label()} : accès au pare-feu (port {p}) depuis {r.src_set.public_part().describe(3)}"))
+                        hits.append((sev, f"règle {r.label()} : accès au pare-feu (port {p}) depuis {r.src_set.public_part().describe(3)}",
+                                     _fz({"rule": r.id, "port": p})))
                         break
     # hôtes de confiance sur TOUS les comptes : le pare-feu ne répond pas aux autres adresses (sauf SNMP, réglé à part).
     # Sauvegarde d'un seul VDOM : les comptes globaux n'y figurent pas, on ne peut pas conclure.
     admins_trusted = (all(a.trusted for a in cfg.admins if a.enabled and a.name != "(comptes Windows)") and cfg.admins
                       and not cfg.services.get("global_missing"))
-    for sev, line in sorted(set(hits), key=lambda x: -x[0]):
+    for sev, line, ref in sorted(set(hits), key=lambda x: -x[0]):
         if admins_trusted and sev == MAJOR and not line.startswith("SNMP"):
             sev = MINOR
         key = re.sub(r"[^a-z0-9]+", "-", line.split(", limité")[0].split(" depuis ")[0].lower()).strip("-")[:80]
@@ -195,7 +211,7 @@ def admin_from_wan(c: Ctx):
               "Les interfaces d'administration de pare-feu (Fortinet, Sophos, MikroTik…) font l'objet de failles critiques "
               "régulières, exploitées en masse dans les heures qui suivent leur publication.",
               "Désactiver l'administration sur l'interface WAN ; administrer depuis le LAN ou le VPN, ou via la console cloud "
-              "du constructeur avec MFA. À défaut, restreindre aux adresses de confiance.")
+              "du constructeur avec MFA. À défaut, restreindre aux adresses de confiance.", refs=_unfz(ref))
     if not hits and not c.is_windows:
         c.ok("expo.admin", EXPO, "Administration du pare-feu non exposée sur Internet (d'après la configuration)")
 

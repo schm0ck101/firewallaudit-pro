@@ -294,6 +294,8 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
     fus = rec.get("followup") or {}
     probs = sorted(analysis.problems, key=lambda f: (-f.severity, f.domain, f.title))
     infos = sorted((f for f in analysis.findings if f.severity == INFO), key=lambda f: (f.domain, f.title))
+    with_fix = [f for f in probs + infos if getattr(f, "remedy", "")] if rep.get("include_remedies", True) else []
+    fix_code = {f.id: f"C{i + 1}" for i, f in enumerate(with_fix)}
     if not probs:
         h.append(f"<p style='margin-top:14px; color:{SEV_COLOR[OK]}; font-size:10.5pt'><b>✓ Aucun problème détecté sur les points contrôlés.</b></p>")
     else:
@@ -321,6 +323,7 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
                 rows.append([f])
         for grp in rows:
             f = grp[0]
+            codes = [fix_code[g.id] for g in grp if g.id in fix_code]
             if len(grp) > 1:
                 ids = [g.id for g in grp]
                 f = Finding(id=f.id, domain=f.domain, severity=f.severity, title=f"{_group_head(grp)} ({len(grp)})", detail="",
@@ -359,7 +362,9 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
                 f"<td width='10%'>{_pill(SEVERITY[f.severity], '#b9c1cb' if shut else SEV_COLOR[f.severity])}</td>"
                 f"<td width='50%'><p style='color:{ink}; font-weight:600'>{'⚠ ' if f.predictive else ''}{_e(f.title)}</p>"
                 f"<p class='small' style='color:{sub}'>{_e(dom)}{(' · ' + _e(det)) if det else ''}</p>{ev}</td>"
-                f"<td width='26%' class='small' style='color:{'#9aa5b1' if shut else '#2d3a48'}'>{_e(f.fix)}</td>"
+                f"<td width='26%' class='small' style='color:{'#9aa5b1' if shut else '#2d3a48'}'>{_e(f.fix)}"
+                + (f"<br><span style='color:{NAVY}'><b>Correction détaillée : {', '.join(codes[:6])}"
+                   f"{' …' if len(codes) > 6 else ''}</b> (annexe)</span>" if codes else "") + "</td>"
                 f"<td width='10%' class='small'><p style='color:{stc}; font-weight:600'>{_e(st) or '&nbsp;'}</p>"
                 + (f"<p style='color:{MUTED}'>{_e(note)}</p>" if note else "")
                 + "</td></tr>"
@@ -476,6 +481,21 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
         h.append(_h3("Notes de l'intervenant") +
                  f"<table width='100%' cellspacing='0' cellpadding='0'><tr><td width='4' bgcolor='{NAVY}'></td>"
                  f"<td bgcolor='#f7f9fc' style='padding:9px 12px'><p>{_e(rec['notes']).replace(chr(10), '<br>')}</p></td></tr></table>")
+
+    if with_fix:
+        from .analyze.remedy import CAUTION, KIND_LABEL
+        h.append(_section(n, "Annexe — corrections proposées", page_break=True))
+        n += 1
+        h.append(f"<p class='muted'>Modifications à apporter, dans la syntaxe de l'équipement, calculées à partir de la configuration "
+                 f"analysée. {_e(CAUTION)} L'outil d'audit n'applique jamais ces modifications.</p>")
+        for f in with_fix:
+            code = fix_code[f.id]
+            h.append(f"<table width='100%' cellspacing='0' cellpadding='0' class='planrow' style='margin-top:8px'><tr>"
+                     f"<td width='7%' valign='top'><p style='font-weight:700; color:{NAVY}'>{code}</p></td>"
+                     f"<td width='93%'><p style='font-weight:600; color:{INK}'>{_pill(SEVERITY[f.severity], SEV_COLOR[f.severity])} "
+                     f"{_e(f.title)}</p><p class='small' style='color:{MUTED}'>{_e(KIND_LABEL.get(f.remedy_kind, ''))}</p>"
+                     f"<p style='font-family:Consolas; font-size:7.5pt; color:#1f2933; white-space:pre-wrap; background:#f4f6f9; "
+                     f"margin-top:3px'>{_e(f.remedy)}</p></td></tr></table>")
 
     h.append(_section(n, "Méthodologie et limites", page_break=not rep.get("include_inventory", True)))
     h.append(f"""<p style='line-height:140%'>Audit réalisé avec {APP_NAME}, en lecture seule : la configuration a été lue

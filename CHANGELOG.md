@@ -3,6 +3,11 @@
 Notes publiques : uniquement les fonctions de l'application, jamais d'information
 sur les audits, les équipements ou les configurations analysés.
 
+## 1.0.16
+- Corrections proposées pour chaque constat, dans la syntaxe de l'équipement : commandes (FortiGate, MikroTik, Windows)
+  ou chemin dans l'interface (Stormshield, WatchGuard, UniFi, Sophos). Bouton « Copier » et annexe du rapport PDF.
+- FortiGate : détection des objets inutilisés fiabilisée (objets référencés par des groupes ou des règles locales).
+
 ## 1.0.15
 - Une source limitée à un pays (géolocalisation) n'est plus considérée comme restreinte.
 - Ports des caméras et enregistreurs vidéo ajoutés aux services sensibles.

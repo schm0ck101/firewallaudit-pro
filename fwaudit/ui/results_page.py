@@ -6,7 +6,7 @@ import re
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QMessageBox, QPushButton, QSplitter, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
@@ -114,7 +114,18 @@ class ResultsPage(QWidget):
         split.addWidget(self.table)
         self.detail = QTextBrowser()
         self.detail.setOpenExternalLinks(True)
-        split.addWidget(self.detail)
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(self.detail, 1)
+        # correction proposée : copiée par l'intervenant, jamais appliquée par l'application
+        self.btn_copy = QPushButton("Copier la correction proposée")
+        self.btn_copy.setToolTip("Copie les commandes / étapes dans le presse-papiers. L'application ne modifie jamais le pare-feu.")
+        self.btn_copy.clicked.connect(self._copy_remedy)
+        self.btn_copy.setVisible(False)
+        rl.addWidget(self.btn_copy)
+        self._remedy = ""
+        split.addWidget(right)
         split.setSizes([940, 420])
         root.addWidget(split, 1)
         self.empty = muted("Aucun audit ouvert. Lancez un audit depuis la page « Audit » ou ouvrez-en un depuis l'historique.")
@@ -148,6 +159,7 @@ class ResultsPage(QWidget):
             self.summary.setText("")
             self.table.setRowCount(0)
             self.detail.clear()
+            self.btn_copy.setVisible(False)
             return
         m = a.machine
         when = time.strftime("%d/%m/%Y %H:%M", time.localtime(rec.get("ts") or 0))
@@ -246,6 +258,7 @@ class ResultsPage(QWidget):
             t.selectRow(0)
         else:
             self.detail.clear()
+            self.btn_copy.setVisible(False)
 
     def _status_combo(self, f, fu) -> QComboBox:
         cb = QComboBox()
@@ -324,10 +337,24 @@ class ResultsPage(QWidget):
         for label, txt in (("Constat", f.detail), ("Pourquoi c'est important", f.impact), ("Que faire", f.fix)):
             if txt:
                 h.append(f"<p><b>{label}</b><br>{e(txt)}</p>")
+        if getattr(f, "remedy", ""):
+            from ..analyze.remedy import CAUTION, KIND_LABEL
+            h.append(f"<p><b>Correction proposée</b> <span style='color:{p.muted}'>· {e(KIND_LABEL.get(f.remedy_kind, ''))}</span><br>"
+                     f"<span style='color:{p.muted}; font-size:9pt'>{e(CAUTION)}</span></p>"
+                     f"<pre style='font-family:Consolas; font-size:9pt; white-space:pre-wrap'>{e(f.remedy)}</pre>")
         if f.evidence:
             h.append(f"<p><b>Éléments relevés</b></p><p style='color:{p.muted}; font-family:Consolas; font-size:9pt'>"
                      + "<br><br>".join(e(x) for x in f.evidence if x) + "</p>")
         self.detail.setHtml("".join(h))
+        self._remedy = getattr(f, "remedy", "") or ""
+        self.btn_copy.setVisible(bool(self._remedy))
+
+    def _copy_remedy(self):
+        from PySide6.QtWidgets import QApplication
+        if self._remedy:
+            QApplication.clipboard().setText(self._remedy)
+            self.btn_copy.setText("Correction copiée ✓")
+            QTimer.singleShot(1500, lambda: self.btn_copy.setText("Copier la correction proposée"))
 
     # ---------------------------------------------------------------
     def _default_name(self, ext: str) -> str:

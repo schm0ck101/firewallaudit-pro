@@ -461,12 +461,12 @@ def test_fortigate_vdom_only_mpls_geo_snmp():
     tunnels IPsec, administration limitée par local-in à un groupe contenant un PAYS, service SNMP redéfini en TCP."""
     cfg = load.from_file(CFG / "forti_vdom_mpls.conf")[0]
     roles = {i.name: i.role for i in cfg.interfaces}
-    assert roles["745"] == "wan" and roles["746"] == "mpls" and roles["PARTENAIRE"] == "vpn"
-    assert cfg.hostname == "VDOM CLIENT" and cfg.services["admin_https_port"] == "1301" and cfg.services["log_remote"] is None
+    assert roles["wan100"] == "wan" and roles["op200"] == "mpls" and roles["PARTENAIRE"] == "vpn"
+    assert cfg.hostname == "VDOM CLIENT" and cfg.services["admin_https_port"] == "10443" and cfg.services["log_remote"] is None
     a = run(cfg)
     ids = {f.id: f for f in a.findings}
-    assert not any("746" in f.title for f in a.findings if f.id.startswith("expo.admin"))     # MPLS : pas Internet
-    assert not any(f.id.startswith("pol.inbound") and "[746" in f.detail for f in a.findings)
+    assert not any("op200" in f.title for f in a.findings if f.id.startswith("expo.admin"))     # MPLS : pas Internet
+    assert not any(f.id.startswith("pol.inbound") and "[op200" in f.detail for f in a.findings)
     https = next(f for f in a.findings if f.id.startswith("expo.admin.administration-web-https"))
     assert https.severity == MAJOR and "tout le pays" in https.title                          # pays entier ≠ adresses de confiance
     snmp = next(f for f in a.findings if f.id.startswith("expo.admin.snmp"))
@@ -474,4 +474,4 @@ def test_fortigate_vdom_only_mpls_geo_snmp():
     assert ids["sys.log"].severity == NOT_CHECKED and "sys.global" in ids
     assert any(f.id.startswith("expo.ssl.tls") for f in a.findings)
     assert ids["pol.inbound.4"].severity == MAJOR and "pays" in ids["pol.inbound.4"].detail       # caméra ouverte à tout le pays
-    assert any(f.id.startswith("expo.nat.") and "seul filtre : le pays" in f.title and f.severity == MAJOR for f in a.findings)
+    assert any(f.id.startswith("expo.nat.") and "filtré par pays seulement" in f.title and f.severity == MAJOR for f in a.findings)

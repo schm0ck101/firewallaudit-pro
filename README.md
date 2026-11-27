@@ -27,6 +27,14 @@ est un tableau à cocher.
 | **Administration et durcissement** | version du système (fin de support), comptes (nom prévisible, hôtes de confiance, MFA), administration non chiffrée, délai de session, VPN (PPTP, IKEv1 agressif, DES/3DES/MD5/SHA1, DH < 14), SNMP, journalisation externe, NTP, IPS, Wi-Fi (UniFi), profils du pare-feu Windows |
 | **Vérifications sur le terrain** | filtrage **sortant** réel (≈ 40 ports vers un serveur public de test, DNS direct, DoT, DoH) — avec détection d'une règle de blocage **qui ne fonctionne pas** ; **cloisonnement** réel vers les autres réseaux ; **exposition vue d'Internet** depuis une connexion extérieure (4G), comparée à la configuration (ports inattendus, pages d'administration, SNMP, DNS) |
 
+## Corrections proposées
+
+Pour chaque constat, l'application calcule la **modification exacte** à partir de la configuration lue (numéro de règle,
+interface, objets) : commandes **CLI FortiOS** (contexte VDOM / global respecté), **RouterOS** et **PowerShell**, ou
+**chemin précis dans l'interface** pour Stormshield, WatchGuard, UniFi et Sophos. Elles s'affichent sous chaque constat
+(bouton « Copier ») et en annexe du rapport PDF (option dans les paramètres). **L'application ne les applique jamais** :
+à vérifier, après sauvegarde, dans une fenêtre de maintenance.
+
 ## Utilisation
 
 1. **Audit** : client, site, source de la configuration, tests réels → lancer.

@@ -157,7 +157,7 @@ def egress(c: Ctx):
                       "La configuration prévoit un blocage, mais la connexion de test vers Internet a abouti.",
                       "La protection attendue n'existe pas : règle mal placée, mauvaise interface, ou autre chemin de sortie.",
                       "Vérifier l'ordre des règles, les interfaces / zones de la règle, et les autres sorties (box, 4G de secours).",
-                      [c.describe(b) for b in blk[:3]])
+                      [c.describe(b) for b in blk[:3]], refs={"port": port, "block_rule": blk[0].id})
             else:
                 allow = None if other_path else _config_allows_out(c, port)
                 detail = "Connexion de test vers un serveur public réussie depuis ce réseau."
@@ -172,14 +172,17 @@ def egress(c: Ctx):
                       detail, why,
                       "Bloquer ce port en sortie (sauf depuis les serveurs qui en ont besoin, ex. le serveur de messagerie pour le 25)."
                       + (f" Restreindre la source de la règle {allow.label()}." if allow is not None else ""),
-                      [c.describe(allow)] if allow is not None else None)
+                      [c.describe(allow)] if allow is not None else None,
+                      refs={"port": port, "protos": ["tcp"], "rule": allow.id if allow is not None else ""})
     dd = e.get("dns_direct") or {}
     direct = [f"{v.get('provider')} ({k})" for k, v in dd.items() if v.get("ok")]
     if direct:
         c.add("test.dns.direct", TEST, MINOR, f"Les postes peuvent utiliser des DNS publics directement ({len(direct)})",
               ", ".join(direct),
               "Le filtrage DNS (sécurité, contrôle des catégories) et la journalisation DNS sont contournables.",
-              "Bloquer le DNS sortant (53 TCP/UDP) sauf depuis les résolveurs internes / le pare-feu.")
+              "Bloquer le DNS sortant (53 TCP/UDP) sauf depuis les résolveurs internes / le pare-feu.",
+              refs={"port": 53, "protos": ["udp", "tcp"], "except": "<résolveurs DNS internes>",
+                    "rule": (lambda r: r.id if r is not None else "")(None if other_path else _config_allows_out(c, 53))})
     if e.get("dot") or e.get("doh"):
         c.add("test.dns.encrypted", TEST, INFO, "DNS chiffré (DoT / DoH) utilisable vers l'extérieur",
               ("DoT (853) " if e.get("dot") else "") + ("DoH (Cloudflare)" if e.get("doh") else ""),

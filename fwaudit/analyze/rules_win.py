@@ -32,13 +32,13 @@ def inbound_any(c: Ctx):
         c.add("pol.win.anyport", POL, MAJOR, f"{len(noprog)} règle(s) entrante(s) : tous ports, toutes adresses, tout programme",
               "Ces règles ouvrent le poste entièrement sur le réseau (profil Public compris).",
               "Le pare-feu ne filtre plus rien pour ce trafic.", "Supprimer ou restreindre (programme, port, adresses distantes).",
-              [c.describe(r) for r in noprog[:15]])
+              [c.describe(r) for r in noprog[:15]], refs={"rules": [r.id for r in noprog]})
     if prog:
         c.add("pol.win.prog", POL, MINOR, f"{len(prog)} programme(s) autorisé(s) en entrée sur tous les ports, réseau Public compris",
               "Règles créées en général par la fenêtre « Autoriser l'accès » de Windows (clic sur Autoriser).",
               "Ces programmes acceptent des connexions depuis n'importe quel réseau, y compris un Wi-Fi public.",
               "Restreindre ces règles aux profils Domaine/Privé, ou les supprimer si le programme n'a pas besoin d'écouter.",
-              [f"{r.name} : {r.apps[0]}" for r in prog[:25]])
+              [f"{r.name} : {r.apps[0]}" for r in prog[:25]], refs={"rules": [r.id for r in prog]})
 
 
 @rule
@@ -57,11 +57,13 @@ def sensitive_open(c: Ctx):
             c.add(f"pol.win.{port}", POL, MAJOR, f"{lab} ouvert à toutes les adresses, profil Public compris",
                   f"{len(public)} règle(s) entrante(s) active(s).",
                   "Sur un réseau public (hôtel, Wi-Fi d'invités), n'importe qui peut atteindre ce service.",
-                  "Restreindre la règle aux profils Domaine/Privé et aux adresses d'administration.", [c.describe(r) for r in public[:10]])
+                  "Restreindre la règle aux profils Domaine/Privé et aux adresses d'administration.", [c.describe(r) for r in public[:10]],
+                  refs={"rules": [r.id for r in public], "port": port})
         elif not srv and port in (3389, 5985, 5986):
             c.add(f"pol.win.{port}", POL, MINOR, f"{lab} ouvert à toutes les adresses du réseau",
                   "", "Sur un poste de travail, l'accès distant devrait être limité aux postes d'administration.",
-                  "Limiter les adresses distantes (bastion, sous-réseau d'administration).", [c.describe(r) for r in rs[:10]])
+                  "Limiter les adresses distantes (bastion, sous-réseau d'administration).", [c.describe(r) for r in rs[:10]],
+                  refs={"rules": [r.id for r in rs], "port": port})
 
 
 @rule
@@ -73,7 +75,7 @@ def edge_and_listening(c: Ctx):
         c.add("pol.win.edge", POL, INFO, f"{len(edge)} règle(s) avec traversée NAT (Edge traversal)",
               "Ces règles acceptent des connexions arrivant à travers un NAT (Teredo / IPv6).",
               "Peut rendre le programme joignable depuis Internet en contournant le routeur.",
-              "Désactiver la traversée de périphérie sauf besoin avéré.", [r.name for r in edge[:15]])
+              "Désactiver la traversée de périphérie sauf besoin avéré.", [r.name for r in edge[:15]], refs={"rules": [r.id for r in edge]})
     listen = c.cfg.services.get("windows_listening") or []
     if listen:
         ports = sorted({x.get("port") for x in listen if x.get("port") and x["port"] < 49152})

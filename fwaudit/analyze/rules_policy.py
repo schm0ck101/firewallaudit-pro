@@ -28,29 +28,29 @@ def any_any(c: Ctx):
                   c.describe(r),
                   "Tout le trafic est permis, y compris depuis Internet vers le réseau interne : le pare-feu ne protège plus rien.",
                   "Supprimer cette règle et la remplacer par des règles précises (zones, adresses et services nécessaires).",
-                  [r.raw[:300]] if r.raw else None)
+                  [r.raw[:300]] if r.raw else None, refs={"rule": r.id})
         elif WAN in dr and (sr & {LAN}):
             c.add(f"pol.egress.{r.id}", POL, MINOR, f"Sortie vers Internet sans restriction : {r.label()}",
                   c.describe(r),
                   "Un poste infecté peut joindre n'importe quel serveur sur n'importe quel port (exfiltration, botnet, spam).",
                   "Limiter la sortie aux services nécessaires (web, DNS vers les résolveurs internes, messagerie…), "
-                  "ou au minimum appliquer filtrage web, IPS et contrôle applicatif sur cette règle.")
+                  "ou au minimum appliquer filtrage web, IPS et contrôle applicatif sur cette règle.", refs={"rule": r.id})
         elif dr and dr <= {GUEST, IOT} and not (sr & {GUEST, IOT, WAN, ANY}):
             c.add(f"pol.wide.{r.id}", POL, MINOR, f"Tout autorisé vers un réseau moins sensible : {r.label()}",
                   c.describe(r),
                   "Les postes internes peuvent tout ouvrir vers ce réseau ; le risque principal (de ce réseau vers les postes) "
                   "dépend des règles inverses.",
-                  "Limiter aux flux nécessaires (DHCP, DNS, administration des équipements).")
+                  "Limiter aux flux nécessaires (DHCP, DNS, administration des équipements).", refs={"rule": r.id})
         elif VPN in (sr | dr):
             c.add(f"pol.wide.{r.id}", POL, MINOR, f"Tout autorisé à travers un VPN : {r.label()}",
                   c.describe(r),
                   "Le site ou les utilisateurs distants accèdent à tous les services : une machine compromise de l'autre côté "
                   "du tunnel atteint directement ce réseau.",
-                  "Limiter le tunnel aux réseaux et services réellement utilisés (ex. serveurs de fichiers, ERP, téléphonie).")
+                  "Limiter le tunnel aux réseaux et services réellement utilisés (ex. serveurs de fichiers, ERP, téléphonie).", refs={"rule": r.id})
         else:
             c.add(f"pol.wide.{r.id}", POL, MAJOR, f"Règle « tout autoriser » entre zones internes : {r.label()}",
                   c.describe(r), "Le cloisonnement entre ces réseaux est annulé : une machine compromise atteint toutes les autres.",
-                  "Restreindre aux flux réellement nécessaires.")
+                  "Restreindre aux flux réellement nécessaires.", refs={"rule": r.id})
 
 
 @rule
@@ -73,7 +73,7 @@ def egress_from_lan(c: Ctx):
                   "Tous les ports et toutes les destinations sont permis (Internet ET les autres réseaux internes s'il n'y a pas "
                   "de zone de destination) : exfiltration, botnet, propagation latérale.",
                   "Limiter aux services nécessaires et appliquer les inspections (IPS, filtrage web) ; bloquer explicitement "
-                  "les flux vers les autres réseaux internes.")
+                  "les flux vers les autres réseaux internes.", refs={"rule": r.id})
 
 
 @rule
@@ -101,7 +101,7 @@ def inbound_sensitive(c: Ctx):
               "d'entrée habituelle des rançongiciels." if open_src else
               "Même restreint, ce service reste sensible si l'adresse autorisée est compromise ou partagée.",
               "Fermer l'accès direct ; passer par un VPN avec authentification forte (MFA). À défaut : restreindre aux "
-              "adresses sources connues, activer l'IPS et journaliser.")
+              "adresses sources connues, activer l'IPS et journaliser.", refs={"rule": r.id})
 
 
 @rule
@@ -145,7 +145,9 @@ def segmentation(c: Ctx):
                   c.describe(r) + f". Aucune règle placée avant ne bloque « {name} » vers {', '.join(open_to)}.",
                   "Un appareil invité ou un objet connecté (rarement mis à jour) peut atteindre les postes et serveurs.",
                   f"Ajouter, avant cette règle, un blocage de « {name} » vers {', '.join(open_to)} (puis n'autoriser que les "
-                  "flux indispensables, ex. une caméra vers l'enregistreur sur un port précis).")
+                  "flux indispensables, ex. une caméra vers l'enregistreur sur un port précis).",
+                  refs={"rule": r.id, "net": name, "net_cidr": net.describe(2), "to": open_to,
+                        "to_cidr": [a2.describe(2) for n2, a2 in targets if n2 in open_to]})
 
 
 @rule
@@ -168,13 +170,14 @@ def shadowed(c: Ctx):
               "L'intention de la règle masquée n'est pas respectée : un blocage voulu ne bloque rien, ou une ouverture "
               "voulue ne fonctionne pas.",
               "Déplacer la règle masquée au-dessus de la règle qui l'englobe, ou corriger l'une des deux.",
-              [c.describe(a), c.describe(b)])
+              [c.describe(a), c.describe(b)], refs={"rule": b.id, "before": a.id})
     if redundant:
         c.add("pol.redundant", POL, MINOR, f"{len(redundant)} règle(s) redondante(s)",
               "Ces règles sont entièrement couvertes par une règle précédente de même action : elles ne servent à rien.",
               "Une politique encombrée est difficile à relire et favorise les erreurs.",
               "Supprimer les règles redondantes après vérification.",
-              [f"{b.label()} couverte par {a.label()}" for a, b in redundant])
+              [f"{b.label()} couverte par {a.label()}" for a, b in redundant],
+              refs={"pairs": [[b.id, a.id] for a, b in redundant]})
 
 
 @rule
@@ -191,7 +194,7 @@ def default_policy(c: Ctx):
                   "Depuis Internet, " + ("toutes les interfaces d'administration du routeur (Winbox, SSH, web, API, DNS) sont joignables."
                                          if layer == "input" else "tout le trafic non prévu traverse le routeur."),
                   "Ajouter en fin de chaîne une règle « drop » pour tout ce qui vient du WAN (ou tout ce qui n'est pas du LAN), "
-                  "après les règles « established/related ».")
+                  "après les règles « established/related ».", refs={"layer": layer})
         else:
             c.ok(f"pol.default.{layer}", POL, f"Blocage par défaut présent pour {label}")
 
@@ -204,20 +207,22 @@ def unused_and_disabled(c: Ctx):
         sev = MINOR if len(dis) >= 5 and len(dis) / max(1, len(rules)) > 0.2 else INFO
         c.add("pol.disabled", POL, sev, f"{len(dis)} règle(s) désactivée(s) conservée(s)",
               "", "Des règles désactivées s'accumulent et peuvent être réactivées par erreur.",
-              "Supprimer celles qui n'ont plus d'usage (après sauvegarde).", [c.describe(r) for r in dis[:25]])
+              "Supprimer celles qui n'ont plus d'usage (après sauvegarde).", [c.describe(r) for r in dis[:25]],
+              refs={"rules": [r.id for r in dis]})
     known = [r for r in c.active if r.hits is not None and r.action == ALLOW]
     zero = [r for r in known if r.hits == 0]
     if known and zero:
         c.add("pol.unused", POL, MINOR, f"{len(zero)} règle(s) d'autorisation jamais utilisée(s)",
               "Compteurs d'utilisation à zéro depuis leur création ou la dernière remise à zéro / le dernier redémarrage.",
               "Une ouverture inutile élargit la surface d'attaque sans contrepartie.",
-              "Vérifier avec le client puis supprimer les règles sans usage.", [c.describe(r) for r in zero[:25]], True)
+              "Vérifier avec le client puis supprimer les règles sans usage.", [c.describe(r) for r in zero[:25]], True,
+              refs={"rules": [r.id for r in zero]})
     elif not known and not c.is_windows:
         c.nc("pol.hits", POL, "Règles inutilisées", "Les compteurs d'utilisation des règles ne figurent pas dans un fichier de "
              "sauvegarde : lire la configuration en direct (API / SSH) pour les obtenir.")
     if c.cfg.objects_unused:
         c.add("pol.objects", POL, INFO, f"{len(c.cfg.objects_unused)} objet(s) d'adresse non utilisé(s)", "", "", "Faire le ménage.",
-              c.cfg.objects_unused[:40])
+              c.cfg.objects_unused[:40], refs={"objects": list(c.cfg.objects_unused)})
 
 
 @rule
@@ -229,7 +234,8 @@ def logging_and_profiles(c: Ctx):
     if nolog:
         c.add("pol.nolog", POL, MINOR, f"{len(nolog)} flux entrant(s) autorisé(s) sans journalisation",
               "", "En cas d'incident, impossible de savoir qui s'est connecté et quand.",
-              "Activer la journalisation sur toutes les règles ouvertes depuis Internet.", [c.describe(r) for r in nolog[:20]])
+              "Activer la journalisation sur toutes les règles ouvertes depuis Internet.", [c.describe(r) for r in nolog[:20]],
+              refs={"rules": [r.id for r in nolog]})
     if c.is_utm:
         bare = [r for r in c.active if r.action == ALLOW and not r.profiles and not c.to_firewall(r) and
                 (c.from_wan(r) or WAN in c.roles(r.dst_zones))]
@@ -238,7 +244,7 @@ def logging_and_profiles(c: Ctx):
                   "Ni antivirus, ni IPS, ni filtrage web / applicatif sur ces règles qui touchent Internet.",
                   "Le pare-feu laisse passer les attaques et les logiciels malveillants sans les analyser, alors que la licence le permet souvent.",
                   "Appliquer les profils de sécurité (IPS, antivirus, filtrage web, contrôle applicatif) aux règles Internet.",
-                  [c.describe(r) for r in bare[:20]])
+                  [c.describe(r) for r in bare[:20]], refs={"rules": [r.id for r in bare]})
     noname = [r for r in c.active if not (r.name or r.comment) and not c.is_windows]
     if len(noname) >= 3:
         c.add("pol.doc", POL, INFO, f"{len(noname)} règle(s) sans nom ni commentaire",

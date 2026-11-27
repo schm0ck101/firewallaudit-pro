@@ -70,6 +70,8 @@ while not done and time.time() - t0 < 600:
 print("audit terminé en", round(time.time() - t0), "s, id", done)
 assert done, "audit non terminé"
 shot("03_resultats")
+win.results.table.selectRow(0)
+shot("03b_detail_correction")
 a = ctx.analysis
 print("notes", a.scores, "constats", len(a.findings), "erreurs de règles", a.rule_errors)
 win.results.f_kind.setCurrentIndex(2)
