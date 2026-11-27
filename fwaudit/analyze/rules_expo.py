@@ -135,17 +135,39 @@ def admin_from_wan(c: Ctx):
                 if a in ("ping", "fgfm", "probe-response", "dns", "ping6", "capwap"):
                     continue
                 lab, sev = ADMIN_LABELS.get(a, (a, MINOR))
-                port = {"https": 443, "http": 80, "ssh": 22, "telnet": 23, "snmp": 161}.get(a)
+                svc = cfg.services
+                port = {"https": int(svc.get("admin_https_port") or 443), "http": 80,
+                        "ssh": int(svc.get("admin_ssh_port") or 22), "telnet": 23, "snmp": 161}.get(a)
+                if a == "http" and "Fortinet" in cfg.vendor and "https" in i.admin and svc.get("admin_https_redirect") is not False:
+                    # FortiOS redirige HTTP vers HTTPS par défaut : aucun mot de passe en clair, seul le port 80 répond
+                    lab, sev = ("HTTP (redirection vers HTTPS" + (", réglage par défaut non vérifié)" if svc.get("admin_https_redirect") is None
+                                                                  else ")"), MINOR)
                 # refus « tout sauf ces adresses » sur l'accès au pare-feu (local-in FortiGate) : accès limité
+                proto = 17 if port == 161 else 6
                 lim = next((r for r in c.active if r.layer == "input" and r.action == DENY and r.src_set.negate and port
-                            and r.svc_set.has_port(port, 17 if port == 161 else 6)
+                            and r.svc_set.has_port(port, proto)
                             and c.itf_in_zones(i.name, r.src_zones)), None)
                 if lim is not None:
-                    sev = min(sev, MINOR)
-                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », limité(e) à "
-                                      f"{AddrSet(lim.src_set.iv, lim.src_set.opaque).describe(3)} ({lim.label()})"))
+                    allowed = AddrSet(lim.src_set.iv, lim.src_set.opaque)
+                    geo = sorted(o for o in allowed.opaque if "geography" in o or "pays" in o.lower())
+                    if geo:
+                        # un pays entier n'est pas une « adresse de confiance »
+                        sev = min(sev, MAJOR)
+                        hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », ouvert(e) à tout le pays "
+                                          f"{', '.join(geo)} (+ {AddrSet(allowed.iv).describe(3)}) ({lim.label()})"))
+                    else:
+                        sev = min(sev, MINOR)
+                        hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} », limité(e) à "
+                                          f"{allowed.describe(3)} ({lim.label()})"))
                 else:
-                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »"))
+                    why = ""
+                    near = next((r for r in c.active if r.layer == "input" and r.action == DENY and port
+                                 and c.itf_in_zones(i.name, r.src_zones) and r.svc_set.has_port(port, 23 - proto)), None)
+                    if near is not None:
+                        # ex. service « SNMP » redéfini en TCP 161 : le vrai SNMP (UDP) passe à côté du refus
+                        why = (f" : {near.label()} vise le port {port} en {'TCP' if proto == 17 else 'UDP'} seulement, "
+                               f"le service réel ({'UDP' if proto == 17 else 'TCP'} {port}) n'est pas filtré")
+                    hits.append((sev, f"{lab} activé(e) sur l'interface Internet « {i.name} »{why}"))
         for r in c.active:
             if any("vpn" in n.lower() for n in r.svc_names):
                 continue                       # portail / service VPN (SSL VPN, OpenVPN) : exposition attendue
@@ -156,9 +178,12 @@ def admin_from_wan(c: Ctx):
                         sev = MAJOR if r.src_set.is_any else MINOR
                         hits.append((sev, f"règle {r.label()} : accès au pare-feu (port {p}) depuis {r.src_set.public_part().describe(3)}"))
                         break
-    admins_trusted = all(a.trusted for a in cfg.admins if a.enabled and a.name != "(comptes Windows)") and cfg.admins
+    # hôtes de confiance sur TOUS les comptes : le pare-feu ne répond pas aux autres adresses (sauf SNMP, réglé à part).
+    # Sauvegarde d'un seul VDOM : les comptes globaux n'y figurent pas, on ne peut pas conclure.
+    admins_trusted = (all(a.trusted for a in cfg.admins if a.enabled and a.name != "(comptes Windows)") and cfg.admins
+                      and not cfg.services.get("global_missing"))
     for sev, line in sorted(set(hits), key=lambda x: -x[0]):
-        if admins_trusted and sev == MAJOR:
+        if admins_trusted and sev == MAJOR and not line.startswith("SNMP"):
             sev = MINOR
         key = re.sub(r"[^a-z0-9]+", "-", line.split(", limité")[0].split(" depuis ")[0].lower()).strip("-")[:80]
         c.add(f"expo.admin.{key}", EXPO, sev, f"Administration du pare-feu exposée : {line}",
@@ -176,6 +201,10 @@ def remote_access(c: Ctx):
     for v in c.cfg.vpn:
         if not v.enabled:
             continue
+        if v.kind == "ssl" and any(t in ("ssl3", "tls1-0", "tls1-1", "tls1.0", "tls1.1") for t in v.enc):
+            c.add(f"expo.ssl.tls.{v.name}", EXPO, MINOR, f"VPN SSL : protocole obsolète accepté ({', '.join(v.enc)} minimum)",
+                  "Version TLS minimale inférieure à 1.2.", "TLS 1.0 / 1.1 sont dépréciés (attaques connues, algorithmes faibles).",
+                  "config vpn ssl settings › set ssl-min-proto-ver tls1-2 (ou tls1-3).")
         if v.kind == "ssl" and "Fortinet" in c.cfg.vendor:
             c.add("expo.sslvpn", EXPO, MAJOR, "VPN SSL FortiGate activé sur Internet",
                   f"Portail VPN SSL ({v.peer}).",

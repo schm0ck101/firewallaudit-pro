@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("FWAUDIT_DATA_DIR", str(Path(os.environ.get("TEMP", "/tmp")) / "fwaudit-tests"))
 
 from fwaudit.analyze.engine import analyze  # noqa: E402
-from fwaudit.analyze.model import CRIT, INFO, MAJOR, MINOR  # noqa: E402
+from fwaudit.analyze.model import CRIT, INFO, MAJOR, MINOR, NOT_CHECKED  # noqa: E402
 from fwaudit.fw import forti, load  # noqa: E402
 
 from test_readers import stormshield_zip  # noqa: E402
@@ -37,7 +37,8 @@ def test_fortigate_findings():
     assert sev(a, "pol.wide.5") == MAJOR                      # caméras -> tout
     assert sev(a, "pol.egress.1") == MINOR
     assert sev(a, "pol.inbound.8") == MINOR                   # RDP/Telnet mais source restreinte (prestataire)
-    assert sev(a, "expo.admin") == CRIT                       # HTTP sur wan1
+    assert sev(a, "expo.admin") == MAJOR                      # HTTPS sur wan1 (HTTP redirigé vers HTTPS par défaut)
+    assert any(f.id.startswith("expo.admin.http-redirection") and f.severity == MINOR for f in a.findings)
     assert sev(a, "expo.sslvpn") == MAJOR and sev(a, "sys.vpn.VPN-AGENCE") == MAJOR
     assert sev(a, "sys.fw") == MAJOR and sev(a, "sys.admin.trust") == MAJOR and sev(a, "sys.snmp.public") == MAJOR
     assert sev(a, "pol.redundant") == MINOR                   # règle 4 couverte par la règle 1
@@ -453,3 +454,22 @@ def test_egress_zone_and_vpn_audit_network():
         "network": "192.168.1.0/24", "interface": "Serveur OpenVPN", "role": "vpn", "ip": "192.168.1.5"}}})
     eg = [f for f in vpn.findings if f.id.startswith("test.egress")]
     assert [f.id for f in eg] == ["test.egress.vpn"] and eg[0].severity == INFO
+
+
+def test_fortigate_vdom_only_mpls_geo_snmp():
+    """Sauvegarde d'un seul VDOM (FG100F 7.4, audit réel 27/11/2026, anonymisé) : lien MPLS en PPPoE « role wan »,
+    tunnels IPsec, administration limitée par local-in à un groupe contenant un PAYS, service SNMP redéfini en TCP."""
+    cfg = load.from_file(CFG / "forti_vdom_mpls.conf")[0]
+    roles = {i.name: i.role for i in cfg.interfaces}
+    assert roles["745"] == "wan" and roles["746"] == "mpls" and roles["PARTENAIRE"] == "vpn"
+    assert cfg.hostname == "VDOM CLIENT" and cfg.services["admin_https_port"] == "1301" and cfg.services["log_remote"] is None
+    a = run(cfg)
+    ids = {f.id: f for f in a.findings}
+    assert not any("746" in f.title for f in a.findings if f.id.startswith("expo.admin"))     # MPLS : pas Internet
+    assert not any(f.id.startswith("pol.inbound") and "[746" in f.detail for f in a.findings)
+    https = next(f for f in a.findings if f.id.startswith("expo.admin.administration-web-https"))
+    assert https.severity == MAJOR and "tout le pays" in https.title                          # pays entier ≠ adresses de confiance
+    snmp = next(f for f in a.findings if f.id.startswith("expo.admin.snmp"))
+    assert snmp.severity == MAJOR and "UDP 161" in snmp.title
+    assert ids["sys.log"].severity == NOT_CHECKED and "sys.global" in ids
+    assert any(f.id.startswith("expo.ssl.tls") for f in a.findings)

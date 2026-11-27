@@ -14,8 +14,10 @@ ALLOW, DENY = "allow", "deny"
 
 # rôles de zone / interface
 WAN, LAN, DMZ, GUEST, IOT, VPN, MGMT, LOCAL, ANY, OTHER = "wan", "lan", "dmz", "guest", "iot", "vpn", "mgmt", "local", "any", "other"
+MPLS = "mpls"      # lien privé d'opérateur (MPLS, interconnexion de sites) : réseaux internes distants, pas Internet
 ROLE_LABELS = {WAN: "Internet (WAN)", LAN: "Réseau interne", DMZ: "DMZ", GUEST: "Invités", IOT: "Objets connectés / caméras",
-               VPN: "VPN", MGMT: "Administration", LOCAL: "Le pare-feu lui-même", ANY: "Toutes zones", OTHER: "Autre"}
+               VPN: "VPN", MGMT: "Administration", LOCAL: "Le pare-feu lui-même", ANY: "Toutes zones", OTHER: "Autre",
+               MPLS: "Lien privé opérateur (MPLS)"}
 
 
 @dataclass

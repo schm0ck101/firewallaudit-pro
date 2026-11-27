@@ -172,6 +172,12 @@ def snmp_logs_time(c: Ctx):
                   "Envoyer les journaux vers un collecteur (syslog, SIEM, FortiAnalyzer, Sophos Central…).")
         elif s.get("log_remote"):
             c.ok("sys.log", SYS, "Journaux envoyés vers un serveur externe")
+        elif s.get("global_missing"):
+            c.nc("sys.log", SYS, "Journalisation vers un serveur externe",
+                 "Réglée dans la partie globale, absente de cette sauvegarde de VDOM.")
+        if s.get("global_missing"):
+            c.nc("sys.global", SYS, "Paramètres globaux du pare-feu (SNMP, NTP, chiffrement fort, délai de session)",
+                 "Sauvegarde d'un seul VDOM : fournir la sauvegarde complète pour les contrôler.")
         if s.get("ntp") is False:
             c.add("sys.ntp", SYS, MINOR, "Synchronisation de l'heure non configurée", "",
                   "Journaux horodatés faux, VPN par certificats et MFA perturbés.", "Configurer NTP.")

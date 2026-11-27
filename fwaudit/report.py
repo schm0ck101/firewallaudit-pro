@@ -404,7 +404,9 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
     snap = rec.get("snapshot") or {}
     tests = snap.get("tests") or {}
     if rep.get("include_inventory", True):
-        ifs = "<br>".join(_e(f"{nm} — {role}" + (f" — {ips}" if ips else "")) for nm, role, ips in (m.get("interfaces") or [])[:16])
+        from .fw.model import ROLE_LABELS
+        ifs = "<br>".join(_e(f"{nm} — {ROLE_LABELS.get(role, role)}" + (f" — {ips}" if ips else ""))
+                          for nm, role, ips in (m.get("interfaces") or [])[:16])
         done = {"egress": "filtrage sortant", "segmentation": "cloisonnement", "external": "exposition vue d'Internet"}
         rows = [("Pare-feu", " ".join(x for x in (m.get("vendor"), m.get("model")) if x), None), ("Nom", m.get("name"), None),
                 ("Version du système", m.get("version") or "non indiquée", None), ("N° de série", m.get("serial"), None),

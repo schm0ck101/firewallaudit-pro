@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import shlex
 
-from .model import ALLOW, DENY, LAN, WAN, Admin, FwConfig, Interface, Nat, Rule, VpnTunnel, guess_role
+from .model import ALLOW, DENY, LAN, MPLS, VPN, WAN, Admin, FwConfig, Interface, Nat, Rule, VpnTunnel, guess_role
 from .sets import AddrSet, SvcSet, parse_addr
 
 # objets prédéfinis (absents de certaines sauvegardes partielles)
@@ -92,7 +92,20 @@ def header_info(text: str) -> dict:
     b = re.search(r"build(\d+)", text[:500])
     if b:
         out["build"] = b.group(1)
+    # sauvegarde d'un seul VDOM (« global_vdom=0:vd_name=CLIENT/CLIENT ») : la partie globale est absente
+    if re.search(r"global_vdom=0", text[:500]):
+        v = re.search(r"vd_name=([^/:\s]+)", text[:500])
+        out["vdom_only"] = v.group(1) if v else "?"
     return out
+
+
+def _private(dst: str) -> bool:
+    import ipaddress
+    try:
+        n = ipaddress.ip_network(dst.replace(" ", "/") if "/" not in dst else dst, strict=False)
+    except ValueError:
+        return False
+    return n.prefixlen > 0 and n.is_private
 
 
 class _Vdom:
@@ -176,6 +189,12 @@ def to_model(text: str, source: str = "") -> FwConfig:
     cfg = FwConfig(vendor="Fortinet FortiGate", model=hi.get("model", ""), version=hi.get("version", ""), source=source)
     g = glob.get("config system global", {})
     cfg.hostname = _v(g, "hostname")
+    vdom_only = hi.get("vdom_only")
+    if vdom_only and not g:
+        cfg.hostname = cfg.hostname or f"VDOM {vdom_only}"
+        cfg.notes.append(f"Sauvegarde du seul VDOM « {vdom_only} » : la partie globale (ports et comptes d'administration, "
+                         "journalisation, SNMP, NTP, haute disponibilité) n'y figure pas. Ces points sont à vérifier sur une "
+                         "sauvegarde complète (« Configuration globale ») ou en direct.")
     vdoms: list[tuple[str, dict]] = []
     if "config vdom" in tree:
         for name, node in tree["config vdom"].items():
@@ -196,6 +215,20 @@ def to_model(text: str, source: str = "") -> FwConfig:
         for _mid, m in ((sdw.get("config members") if isinstance(sdw, dict) else None) or {}).items():
             if isinstance(m, dict) and _v(m, "interface") and _v(m, "zone"):
                 zone_of[_v(m, "interface")] = _v(m, "zone")
+    phase1 = set()
+    static_private: dict[str, int] = {}
+    static_default: set[str] = set()
+    for _vn, vt in vdoms:
+        V0 = _Vdom(vt, glob)
+        phase1 |= set(V0.sec("config vpn ipsec phase1-interface")) | set(V0.sec("config vpn ipsec phase1"))
+        for _sid, rt in (V0.sec("config router static") or {}).items():
+            if not isinstance(rt, dict) or not _v(rt, "device"):
+                continue
+            dst = " ".join(_l(rt, "dst")[:2]) or "0.0.0.0 0.0.0.0"
+            if dst in ("0.0.0.0 0.0.0.0", "0.0.0.0/0"):
+                static_default.add(_v(rt, "device"))
+            elif _private(dst):
+                static_private[_v(rt, "device")] = static_private.get(_v(rt, "device"), 0) + 1
     for name, d in ifaces.items():
         role = _v(d, "role") or ""
         role = {"wan": WAN, "lan": LAN, "dmz": "dmz", "undefined": ""}.get(role, "") or guess_role(name + " " + _v(d, "alias"))
@@ -211,6 +244,13 @@ def to_model(text: str, source: str = "") -> FwConfig:
                 cidr.append(f"{ip[0]}/{ipaddress.IPv4Network(f'0.0.0.0/{ip[1]}').prefixlen}")
         if _v(d, "mode") in ("dhcp", "pppoe") and role != LAN:
             role = WAN if role in ("", "other") else role
+        if _v(d, "type") == "tunnel" and (name in phase1 or name.startswith("ssl.")):
+            role = VPN
+        label = (name + " " + _v(d, "alias")).lower()
+        if role == WAN and (re.search(r"mpls|vpn ?ip|ipvpn|interco|lan ?to ?lan|lan2lan|priv", label) or (static_private.get(name, 0) >= 2 and name not in static_default
+                                 and sum(1 for x in ifaces.values() if isinstance(x, dict) and _v(x, "role") == "wan") > 1)):
+            # lien d'opérateur vers les autres sites (routes vers des réseaux privés) : pas Internet
+            role = MPLS
         cfg.interfaces.append(Interface(name=name, role=role, zone=zone_of.get(name, ""), ips=cidr,
                                         admin=[x.lower() for x in _l(d, "allowaccess")],
                                         vlan=int(_v(d, "vlanid")) if _v(d, "vlanid").isdigit() else None,
@@ -356,8 +396,10 @@ def to_model(text: str, source: str = "") -> FwConfig:
                                      mode=_v(p, "mode", "main")))
         ssl = V.sec("config vpn ssl settings")
         if ssl and (_l(ssl, "source-interface") or _v(ssl, "status") == "enable") and _v(ssl, "status") != "disable":
-            cfg.vpn.append(VpnTunnel(name="SSL-VPN", kind="ssl", peer=f"port {_v(ssl, 'port', '443')}",
-                                     enc=[_v(ssl, "ssl-min-proto-ver", "tls1-2")]))
+            src = _l(ssl, "source-address")
+            neg = _v(ssl, "source-address-negate") == "enable"
+            peer = f"port {_v(ssl, 'port', '443')}" + (f" · sources {'sauf ' if neg else ''}{', '.join(src)}" if src and src != ["all"] else "")
+            cfg.vpn.append(VpnTunnel(name="SSL-VPN", kind="ssl", peer=peer, enc=[_v(ssl, "ssl-min-proto-ver", "tls1-2")]))
     pptp = glob.get("config vpn pptp") or {}
     if _v(pptp, "status") == "enable":
         cfg.vpn.append(VpnTunnel(name="PPTP", kind="pptp"))
@@ -370,8 +412,20 @@ def to_model(text: str, source: str = "") -> FwConfig:
                       "config log syslogd2 setting", "config log fortianalyzer-cloud setting"))
     ntp = glob.get("config system ntp") or {}
     ha = glob.get("config system ha") or {}
+    https_port = _v(g, "admin-sport", "443")
+    if vdom_only and not g:
+        for _vn, vt in vdoms:
+            V0 = _Vdom(vt, glob)
+            svcs0 = V0.sec("config firewall service custom")
+            for _pid, lp in (V0.sec("config firewall local-in-policy") or {}).items():
+                for sn in _l(lp, "service"):
+                    tcp = _l(svcs0.get(sn) or {}, "tcp-portrange")
+                    if re.search(r"https|gui|admin|web", sn, re.I) and len(tcp) == 1 and tcp[0].split(":")[0].isdigit():
+                        https_port = tcp[0].split(":")[0]
+        if https_port != "443":
+            cfg.notes.append(f"Port d'administration HTTPS déduit des règles local-in : {https_port} (partie globale absente).")
     cfg.services = {
-        "admin_https_port": _v(g, "admin-sport", "443"), "admin_ssh_port": _v(g, "admin-ssh-port", "22"),
+        "admin_https_port": https_port, "admin_ssh_port": _v(g, "admin-ssh-port", "22"),
         "admin_telnet": _v(g, "admin-telnet", "") == "enable",
         "admin_https_redirect": _v(g, "admin-https-redirect", "enable") == "enable",
         "admin_timeout_min": int(_v(g, "admintimeout", "5") or 5),
@@ -383,6 +437,13 @@ def to_model(text: str, source: str = "") -> FwConfig:
         "admin_maintainer": _v(g, "admin-maintainer", "enable") == "enable",
         "admin_lockout_duration": _v(g, "admin-lockout-duration", "60"),
     }
+    if vdom_only and not g:
+        # valeurs globales inconnues : ne pas conclure sur les valeurs par défaut
+        override = any(_v(vt.get(k) or {}, "status") == "enable" or _v(vt.get(k) or {}, "override") == "enable"
+                       for _vn, vt in vdoms for k in ("config log syslogd override-setting", "config log fortianalyzer override-setting"))
+        cfg.services.update({"log_remote": True if override else None, "ntp": None, "strong_crypto": None,
+                             "admin_timeout_min": None, "admin_https_redirect": None, "admin_telnet": None,
+                             "snmp_communities": None, "global_missing": True})
     # interfaces sans adresse ni usage (ports physiques d'un switch, naf.root, l2t.root…) : retirées de la fiche
     used_itf = {z for r in cfg.rules for z in r.src_zones + r.dst_zones}
     used_itf |= {_v(d, "interface") for d in ifaces.values() if isinstance(d, dict)}

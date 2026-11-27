@@ -2,7 +2,7 @@
 tests réels, aides (rôles de zones, couverture de règles, ports sensibles)."""
 from __future__ import annotations
 
-from ..fw.model import ANY, DMZ, GUEST, IOT, LAN, LOCAL, MGMT, VPN, WAN, FwConfig, Rule
+from ..fw.model import ANY, DMZ, GUEST, IOT, LAN, LOCAL, MGMT, MPLS, VPN, WAN, FwConfig, Rule
 from .model import NOT_CHECKED, OK, Finding
 
 # ports sensibles : (port, proto, libellé, gravité si exposé à Internet sans restriction)
@@ -17,7 +17,7 @@ SENSITIVE = {
     8006: ("Proxmox", 3), 9100: ("Impression RAW", 3), 502: ("Modbus", 4), 47808: ("BACnet", 4), 1883: ("MQTT", 3),
     25: ("SMTP", 2), 110: ("POP3", 2), 143: ("IMAP", 2), 80: ("HTTP", 1), 8080: ("HTTP", 1), 8443: ("HTTPS (admin ?)", 1),
 }
-INTERNAL_ROLES = (LAN, DMZ, GUEST, IOT, MGMT, VPN)
+INTERNAL_ROLES = (LAN, DMZ, GUEST, IOT, MGMT, VPN, MPLS)
 UTM_VENDORS = ("Fortinet", "Sophos", "WatchGuard", "Stormshield")
 
 
