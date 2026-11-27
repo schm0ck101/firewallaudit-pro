@@ -43,9 +43,13 @@ if ($LASTEXITCODE -eq 0) {
     Say "Release $tag existante : remplacement des fichiers..."
     gh release upload $tag $assets --clobber
 } else {
-    $prev = git describe --tags --abbrev=0 2>$null
-    $range = if ($LASTEXITCODE -eq 0 -and $prev) { "$prev..HEAD" } else { "HEAD" }
-    $changes = (git log $range --format="- %s" --no-merges) -join "`n"
+    # notes publiques = section de CHANGELOG.md (jamais les messages de commit : ils peuvent décrire un audit)
+    $cl = Join-Path (Split-Path $PSScriptRoot) "CHANGELOG.md"
+    $m = if (Test-Path $cl) { [regex]::Match((Get-Content $cl -Raw -Encoding UTF8), '(?ms)^## ' + [regex]::Escape($ver) + '[ \t]*\r?$(.*?)(?=^## |\z)') } else { $null }
+    if (-not $m -or -not $m.Success -or -not $m.Groups[1].Value.Trim()) {
+        Say "CHANGELOG.md sans section « ## $ver » : release NON publiée." Yellow; return
+    }
+    $changes = $m.Groups[1].Value.Trim()
     $portable = Split-Path -Leaf ($assets | Where-Object { $_ -like "*-Portable-*.exe" })
     $setup = Split-Path -Leaf ($assets | Where-Object { $_ -like "*-Setup-*" })
     $notes = @"
