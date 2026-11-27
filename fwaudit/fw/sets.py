@@ -112,15 +112,20 @@ class AddrSet:
         """Couvre tout l'espace public (« internet » Stormshield, « Internet » des zones) sans être « tout »."""
         return not self.negate and not self.is_any and _covers(self.iv, _public_iv())
 
+    @property
+    def geo(self) -> list[str]:
+        """Objets « pays » (géolocalisation) : un pays entier n'est pas une source restreinte."""
+        return sorted(o for o in self.opaque if "geography" in o.lower() or "géolocalisation" in o.lower() or "pays" in o.lower())
+
     def describe(self, limit: int = 4) -> str:
         if self.is_any:
             return "tout"
         if self.is_internet and not self.opaque:
             return "Internet"
-        parts = []
-        for lo, hi in self.iv[:limit]:
+        parts = self.geo[:limit]                 # pays en premier : ne jamais le cacher dans « (+n) »
+        for lo, hi in self.iv[:max(0, limit - len(parts))]:
             parts.append(_fmt(lo, hi))
-        parts += sorted(self.opaque)[:max(0, limit - len(parts))]
+        parts += sorted(set(self.opaque) - set(self.geo))[:max(0, limit - len(parts))]
         more = len(self.iv) + len(self.opaque) - len(parts)
         return ("tout sauf " if self.negate else "") + ", ".join(parts) + (f" (+{more})" if more > 0 else "")
 

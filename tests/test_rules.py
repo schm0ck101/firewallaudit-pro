@@ -473,3 +473,5 @@ def test_fortigate_vdom_only_mpls_geo_snmp():
     assert snmp.severity == MAJOR and "UDP 161" in snmp.title
     assert ids["sys.log"].severity == NOT_CHECKED and "sys.global" in ids
     assert any(f.id.startswith("expo.ssl.tls") for f in a.findings)
+    assert ids["pol.inbound.4"].severity == MAJOR and "pays" in ids["pol.inbound.4"].detail       # caméra ouverte à tout le pays
+    assert any(f.id.startswith("expo.nat.") and "seul filtre : le pays" in f.title and f.severity == MAJOR for f in a.findings)

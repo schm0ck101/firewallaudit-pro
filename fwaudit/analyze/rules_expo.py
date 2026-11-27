@@ -76,10 +76,12 @@ def published_services(c: Ctx):
         if "Fortinet" in c.cfg.vendor and not any(r.dst_set.contains_ip(n.int_ip) for r in allowed_targets):
             continue
         ports = _ports(n.int_port or n.ext_ports) or _ports(n.ext_ports)
+        geo = []
         if not n.src_restrict and n.int_ip:
             # sources réellement autorisées : celles des règles qui laissent passer vers l'adresse publiée
             allow = [r for r in allowed_targets if r.dst_set.contains_ip(n.int_ip)]
-            if allow and not any(r.src_set.is_any or r.src_set.is_internet or r.src_set.negate for r in allow):
+            geo = sorted({g for r in allow for g in r.src_set.geo})
+            if allow and not any(r.src_set.is_any or r.src_set.is_internet or r.src_set.negate or r.src_set.geo for r in allow):
                 srcs = []
                 for r in allow:
                     d = r.src_set.describe(3)
@@ -88,9 +90,10 @@ def published_services(c: Ctx):
                 n.src_restrict = srcs[:3]
         sens = sorted({(p, SENSITIVE[p]) for lo, hi in ports for p in SENSITIVE if lo <= p <= hi and SENSITIVE[p][1] >= 3})
         line = (f"« {n.name or n.id} » : port public {n.ext_ports or 'tous'} ({n.proto}) → {n.int_ip}:{n.int_port or n.ext_ports}"
-                + (f", limité à {', '.join(n.src_restrict)}" if n.src_restrict else ", depuis tout Internet"))
+                + (f", limité à {', '.join(n.src_restrict)}" if n.src_restrict else
+                   f", depuis tout le pays {', '.join(geo)}" if geo else ", depuis tout Internet"))
         if sens and not n.src_restrict:
-            crit.append((line, sens))
+            crit.append((line, sens if not geo else [(p, (lab, min(sv, 3))) for p, (lab, sv) in sens]))
         else:
             info.append(line)
         if not ports and not n.src_restrict:
@@ -98,7 +101,8 @@ def published_services(c: Ctx):
     for line, sens in crit:
         sev = CRIT if any(s[1] >= 4 for _p, s in sens) else MAJOR
         names = ", ".join(sorted({s[0] for _p, s in sens}))
-        c.add(f"expo.nat.{abs(hash(line)) % 10**8}", EXPO, sev, f"{names} publié sur Internet sans restriction",
+        c.add(f"expo.nat.{abs(hash(line)) % 10**8}", EXPO, sev,
+              f"{names} publié sur Internet " + ("(seul filtre : le pays)" if ", depuis tout le pays" in line else "sans restriction"),
               line, "Service directement attaquable depuis Internet : force brute, failles connues, rançongiciels.",
               "Supprimer la redirection et passer par un VPN avec MFA ; à défaut, restreindre aux adresses sources connues "
               "et activer IPS + journalisation.")

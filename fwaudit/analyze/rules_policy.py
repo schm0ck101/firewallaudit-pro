@@ -87,13 +87,16 @@ def inbound_sensitive(c: Ctx):
         hits =[(p, lab, sev) for p, (lab, sev) in SENSITIVE.items() if sev >= 3 and r.svc_set.has_port(p)]
         if not hits or r.svc_set.is_any and r.src_set.is_any and r.dst_set.is_any:
             continue
-        open_src = r.src_set.is_any or r.src_set.size > 2**16
+        geo = r.src_set.geo
+        open_src = r.src_set.is_any or r.src_set.size > 2**16 or bool(geo)
         sev = CRIT if open_src and any(s >= 4 for _p, _l, s in hits) else MAJOR if open_src else MINOR
-        if open_src and any(a.startswith("géolocalisation") for a in r.apps):
+        if open_src and (geo or any(a.startswith("géolocalisation") for a in r.apps)):
             sev = MAJOR if sev == CRIT else sev        # ouvert, mais limité à certains pays
         names = "tous les services" if r.svc_set.is_any else ", ".join(sorted({lab for _p, lab, _s in hits}))
         c.add(f"pol.inbound.{r.id}", POL, sev, f"Accès depuis Internet à {names} : {r.label()}",
-              c.describe(r) + ("" if open_src else " (sources restreintes)"),
+              c.describe(r) + ("" if open_src else " (sources restreintes)")
+              + (f" — limité au(x) pays {', '.join(geo)} : n'importe quelle adresse de ce pays (et tout VPN ou serveur "
+                 "loué qui s'y trouve) passe." if geo else ""),
               "Ces services sont la première cible des attaques automatisées (force brute, failles connues) et la porte "
               "d'entrée habituelle des rançongiciels." if open_src else
               "Même restreint, ce service reste sensible si l'adresse autorisée est compromise ou partagée.",

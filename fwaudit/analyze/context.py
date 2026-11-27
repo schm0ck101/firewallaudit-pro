@@ -15,6 +15,8 @@ SENSITIVE = {
     389: ("LDAP", 4), 636: ("LDAPS", 3), 88: ("Kerberos", 4), 53: ("DNS", 2), 8291: ("Winbox MikroTik", 4),
     8728: ("API MikroTik", 4), 10000: ("Webmin", 3), 5000: ("port 5000 (interface NAS ou web)", 3), 5001: ("port 5001 (interface NAS ou web)", 3),
     8006: ("Proxmox", 3), 9100: ("Impression RAW", 3), 502: ("Modbus", 4), 47808: ("BACnet", 4), 1883: ("MQTT", 3),
+    8000: ("port 8000 (enregistreur vidéo / caméra Hikvision)", 3), 37777: ("enregistreur vidéo Dahua", 3),
+    554: ("flux vidéo RTSP (caméras)", 3), 34567: ("enregistreur vidéo XMEye", 4),
     25: ("SMTP", 2), 110: ("POP3", 2), 143: ("IMAP", 2), 80: ("HTTP", 1), 8080: ("HTTP", 1), 8443: ("HTTPS (admin ?)", 1),
 }
 INTERNAL_ROLES = (LAN, DMZ, GUEST, IOT, MGMT, VPN, MPLS)
