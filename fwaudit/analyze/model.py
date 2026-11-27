@@ -31,6 +31,7 @@ class Finding:
     refs: dict = field(default_factory=dict)   # références exactes (règles, interface, objets) pour la correction proposée
     remedy: str = ""           # correction proposée, dans la syntaxe du constructeur (jamais appliquée par l'appli)
     remedy_kind: str = ""      # cli-fortios / routeros / powershell / gui
+    remedy_notes: list[str] = field(default_factory=list)   # points d'attention : impact, à faire avant, retour arrière
 
     def to_dict(self) -> dict:
         return asdict(self)

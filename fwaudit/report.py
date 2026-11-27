@@ -494,7 +494,9 @@ def _build_html(rec: dict, analysis: Analysis, rep: dict, prev: Analysis | None,
                      f"<td width='7%' valign='top'><p style='font-weight:700; color:{NAVY}'>{code}</p></td>"
                      f"<td width='93%'><p style='font-weight:600; color:{INK}'>{_pill(SEVERITY[f.severity], SEV_COLOR[f.severity])} "
                      f"{_e(f.title)}</p><p class='small' style='color:{MUTED}'>{_e(KIND_LABEL.get(f.remedy_kind, ''))}</p>"
-                     f"<p style='font-family:Consolas; font-size:7.5pt; color:#1f2933; white-space:pre-wrap; background:#f4f6f9; "
+                     + "".join(f"<p class='small' style='color:#2d3a48; margin-top:1px'>• <b>{_e(nt.split(' : ', 1)[0])}</b> : "
+                               f"{_e(nt.split(' : ', 1)[-1])}</p>" for nt in (getattr(f, 'remedy_notes', None) or []))
+                     + f"<p style='font-family:Consolas; font-size:7.5pt; color:#1f2933; white-space:pre-wrap; background:#f4f6f9; "
                      f"margin-top:3px'>{_e(f.remedy)}</p></td></tr></table>")
 
     h.append(_section(n, "Méthodologie et limites", page_break=not rep.get("include_inventory", True)))

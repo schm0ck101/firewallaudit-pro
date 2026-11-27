@@ -8,15 +8,15 @@ est un tableau à cocher.
 
 ## Pare-feu pris en charge
 
-| Constructeur | Source | État |
-|---|---|---|
-| Fortinet FortiGate | sauvegarde `.conf` (multi-VDOM, SD-WAN) ou API REST (jeton lecture seule, compteurs d'utilisation des règles) | **validé** (FortiOS 7.4) |
-| Stormshield SNS | sauvegarde `.na` faite sans mot de passe, ou dossier `ConfigFiles` zippé | **validé** (SNS 4.8) |
-| Sophos Firewall (SFOS) | export de configuration (`.tar` / `Entities.xml`) | à valider |
-| WatchGuard Firebox | configuration XML de Policy Manager | **validé** (Fireware 2026.4) |
-| UniFi (UDM, UCG, UXG…) | API de la console, compte local en lecture seule (pare-feu par zones et anciennes règles) | **validé** (Network 11) |
-| MikroTik RouterOS | `/export` (`.rsc`) ou SSH en lecture (compteurs inclus) | à valider |
-| Pare-feu Windows | ce poste, ou fichier produit par `--windows-export` sur un serveur | **validé** |
+| Constructeur | Source |
+|---|---|
+| Fortinet FortiGate | sauvegarde `.conf` (multi-VDOM, SD-WAN) ou API REST (jeton lecture seule, compteurs d'utilisation des règles) |
+| Stormshield SNS | sauvegarde `.na` faite sans mot de passe, ou dossier `ConfigFiles` zippé |
+| Sophos Firewall (SFOS) | export de configuration (`.tar` / `Entities.xml`) |
+| WatchGuard Firebox | configuration XML de Policy Manager |
+| UniFi (UDM, UCG, UXG…) | API de la console, compte local en lecture seule (pare-feu par zones et anciennes règles) |
+| MikroTik RouterOS | `/export` (`.rsc`) ou SSH en lecture (compteurs inclus) |
+| Pare-feu Windows | ce poste, ou fichier produit par `--windows-export` sur un serveur |
 
 ## Ce qui est contrôlé
 
@@ -32,7 +32,8 @@ est un tableau à cocher.
 Pour chaque constat, l'application calcule la **modification exacte** à partir de la configuration lue (numéro de règle,
 interface, objets) : commandes **CLI FortiOS** (contexte VDOM / global respecté), **RouterOS** et **PowerShell**, ou
 **chemin précis dans l'interface** pour Stormshield, WatchGuard, UniFi et Sophos. Elles s'affichent sous chaque constat
-(bouton « Copier ») et en annexe du rapport PDF (option dans les paramètres). **L'application ne les applique jamais** :
+(bouton « Copier ») et en annexe du rapport PDF (option dans les paramètres), avec leurs **points d'attention** :
+impact, à faire avant, retour arrière (valeurs d'origine). **L'application ne les applique jamais** :
 à vérifier, après sauvegarde, dans une fenêtre de maintenance.
 
 ## Utilisation

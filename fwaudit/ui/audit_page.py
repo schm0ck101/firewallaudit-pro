@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout, Q
                                QMessageBox, QProgressBar, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
 from ..analyze.engine import analyze
-from ..fw.load import VALIDATED, VENDORS
+from ..fw.load import VENDORS
 from ..scan import runner
 from . import theme
 from .common import muted, page_title, panel
@@ -119,8 +119,7 @@ class AuditPage(QWidget):
         for k, (lab, how, _live) in VENDORS.items():
             self.vendor.addItem(lab, k)
         fl.addRow("Type", self.vendor)
-        self.formats = muted("<br>".join(f"<b>{lab}</b> : {how}" + ("" if VALIDATED.get(k) else " — <i>lecteur à valider sur un export réel</i>")
-                                         for k, (lab, how, _l) in VENDORS.items()))
+        self.formats = muted("<br>".join(f"<b>{lab}</b> : {how}" for k, (lab, how, _l) in VENDORS.items()))
         self.formats.setTextFormat(Qt.RichText)
         wv.addWidget(self.formats)
         self.stack.addWidget(w)

@@ -119,7 +119,6 @@ def run(opts: Options, progress=None, cancel: threading.Event | None = None) -> 
         holder["cfg"] = cfg
         snap["config"] = cfg.to_dict()
         snap["meta"] = {k: v for k, v in meta.items() if k not in ("raw",)}
-        snap["meta"]["validated_reader"] = load.VALIDATED.get(meta.get("vendor", ""), False)
         return (f"{cfg.vendor} {cfg.model} {cfg.version} — {len(cfg.rules)} règle(s), {len(cfg.nat)} publication(s), "
                 f"{len(cfg.interfaces)} interface(s)").replace("  ", " ")
 

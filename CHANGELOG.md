@@ -3,6 +3,10 @@
 Notes publiques : uniquement les fonctions de l'application, jamais d'information
 sur les audits, les équipements ou les configurations analysés.
 
+## 1.0.17
+- Points d'attention pour chaque correction proposée : impact, à faire avant, retour arrière (avec les valeurs d'origine).
+- Page Audit simplifiée : liste des formats de configuration acceptés.
+
 ## 1.0.16
 - Corrections proposées pour chaque constat, dans la syntaxe de l'équipement : commandes (FortiGate, MikroTik, Windows)
   ou chemin dans l'interface (Stormshield, WatchGuard, UniFi, Sophos). Bouton « Copier » et annexe du rapport PDF.

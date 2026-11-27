@@ -138,3 +138,15 @@ def test_egress_test_remedies():
     a = analyze({"config": mt.to_dict(), "meta": {}, "tests": {"egress": {"tcp": {"445": True, "443": True}}}})
     f = next(x for x in a.findings if x.id == "test.egress.445")
     assert "add chain=forward action=drop protocol=tcp dst-port=445" in f.remedy
+
+
+def test_remedy_notes():
+    """Chaque correction porte ses points d'attention ; le retour arrière reprend les valeurs d'origine."""
+    a = run(load.from_file(CFG / "forti_vdom_mpls.conf")[0])
+    fx = fixes(a)
+    assert all(f.remedy_notes for f in fx.values()), [i for i, f in fx.items() if not f.remedy_notes]
+    adm = next(f for i, f in fx.items() if i.startswith("expo.admin.administration-web-https"))
+    assert any(n.startswith("Avant : ") and "TESTER" in n for n in adm.remedy_notes)
+    assert any(n.startswith("Retour arrière : ") and "ping https ssh snmp http" in n for n in adm.remedy_notes)
+    cam = fx["pol.inbound.4"]
+    assert any("source France" in n for n in cam.remedy_notes)

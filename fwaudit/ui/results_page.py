@@ -341,6 +341,9 @@ class ResultsPage(QWidget):
             from ..analyze.remedy import CAUTION, KIND_LABEL
             h.append(f"<p><b>Correction proposée</b> <span style='color:{p.muted}'>· {e(KIND_LABEL.get(f.remedy_kind, ''))}</span><br>"
                      f"<span style='color:{p.muted}; font-size:9pt'>{e(CAUTION)}</span></p>"
+                     + ("<p style='margin-top:2px'><b>Points d'attention</b><br>" + "<br>".join(
+                         "• <b>" + e(n.split(" : ", 1)[0]) + "</b> : " + e(n.split(" : ", 1)[-1])
+                         for n in (getattr(f, "remedy_notes", None) or [])) + "</p>" if getattr(f, "remedy_notes", None) else "")
                      f"<pre style='font-family:Consolas; font-size:9pt; white-space:pre-wrap'>{e(f.remedy)}</pre>")
         if f.evidence:
             h.append(f"<p><b>Éléments relevés</b></p><p style='color:{p.muted}; font-family:Consolas; font-size:9pt'>"

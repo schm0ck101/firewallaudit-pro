@@ -1010,5 +1010,10 @@ def attach(c: Ctx) -> None:
             continue
         txt = gen.remedy(f)
         if txt and txt.strip():
+            from .remedy_notes import format_notes, notes_for
             f.remedy = txt.strip()
             f.remedy_kind = gen.kind
+            try:
+                f.remedy_notes = format_notes(notes_for(f, gen))
+            except Exception:
+                f.remedy_notes = []
